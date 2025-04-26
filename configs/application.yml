@@ -1,0 +1,15 @@
+app:
+  name: GO-API
+  server:
+    port: ${SERVER_PORT:8080}
+    context-path: /go-http
+  db:
+    host: localhost
+    port: 5432
+    username: admin
+    password: 123456
+    database: postgres
+    schema: go
+  short-url:
+    clear:
+      cron: "0 19 * * *"

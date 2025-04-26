@@ -1,0 +1,25 @@
+app:
+  start: Starting Application
+  started: Application Started
+
+short-url:
+  cron:
+    start: Start Clear Short Url By Expiration
+    end: Completed Clear Short Url By Expiration
+  error:
+    empty-url: empty url
+    empty-hash: empty hash
+    invalid-url: invalid url
+    existent-hash: hash for short url already exists
+    not-found: short url not found
+    clear-failed: Failed to Clear Short Url By Expiration
+
+
+
+foo:
+  bar:
+    foo:
+      bar:
+        foo:
+          bar: Teste
+      foo: Teste2
