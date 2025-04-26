@@ -1,0 +1,10 @@
+app:
+  string: ${ENV_EXAMPLE:env_example}
+  int: ${ENV_EXAMPLE_INT:1}
+  float: ${ENV_EXAMPLE_DURATION:1.0}
+  boolean: ${ENV_EXAMPLE_BOOL:false}
+  duration: ${ENV_EXAMPLE_DURATION:1h30m}
+  time: ${ENV_EXAMPLE_DURATION:2006-01-02 15:04:05}
+  string-slice: ${ENV_EXAMPLE_SLICE:teste1,teste2}
+  int-slice: ${ENV_EXAMPLE_INT_SLICE:1,2}
+
