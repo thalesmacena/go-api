@@ -30,7 +30,7 @@ func main() {
 		zap.Any("struct", example),
 	)
 
-	log.Infow("Example with lass Performatic suggaredLogger (non Strong Type). You can use log.Infow logDebugw, logErrorw, etc.",
+	log.Infow("Example with less Performatic suggaredLogger (non Strong Type). You can use log.Infow logDebugw, logErrorw, etc.",
 		"key1", booleanValue,
 		"key2", stringValue,
 		"key3", intValue,

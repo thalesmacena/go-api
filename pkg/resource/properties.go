@@ -81,50 +81,87 @@ func resolveEnvVariable(value string) interface{} {
 	return nil
 }
 
+// Get retrieves a value from the properties map by key.
+// It returns the value as an interface{} type.
+// If the key is not found, it returns nil.
+// Example: Get("server.port") might return 8080.
 func Get(key string) any {
 	return viper.Get(key)
 }
 
+// GetString retrieves a value from the properties map by key and returns it as a string.
+// If the key is not found, it returns an empty string.
+// Example: GetString("server.port") might return "8080".
 func GetString(key string) string {
 	return viper.GetString(key)
 }
 
+// GetBool retrieves a value from the properties map by key and returns it as a boolean.
+// If the key is not found, it returns false.
+// Example: GetBool("server.enabled") might return true.
 func GetBool(key string) bool {
 	return viper.GetBool(key)
 }
 
+// GetDuration retrieves a value from the properties map by key and returns it as a time.Duration.
+// If the key is not found, it returns 0.
+// Example: GetDuration("server.timeout") might return 10 * time.Second.
 func GetDuration(key string) time.Duration {
 	return viper.GetDuration(key)
 }
 
+// GetTime retrieves a value from the properties map by key and returns it as a time.Time.
+// If the key is not found, it returns a zero time.Time.
+// Example: GetTime("server.start_time") might return the current time.
 func GetTime(key string) time.Time {
 	return viper.GetTime(key)
 }
 
+// GetInt retrieves a value from the properties map by key and returns it as an integer.
+// If the key is not found, it returns 0.
+// Example: GetInt("server.port") might return 8080.
 func GetInt(key string) int {
 	return viper.GetInt(key)
 }
 
+// GetInt32 retrieves a value from the properties map by key and returns it as an int32.
+// If the key is not found, it returns 0.
+// Example: GetInt32("server.port") might return 8080.
 func GetInt32(key string) int32 {
 	return viper.GetInt32(key)
 }
 
+// GetInt64 retrieves a value from the properties map by key and returns it as an int64.
+// If the key is not found, it returns 0.
+// Example: GetInt64("server.port") might return 8080.
 func GetInt64(key string) int64 {
 	return viper.GetInt64(key)
 }
 
+// GetIntSlice retrieves a value from the properties map by key and returns it as an integer slice.
+// If the key is not found, it returns an empty slice.
+// Example: GetIntSlice("server.ports") might return []int{8080, 8081}.
 func GetIntSlice(key string) []int {
 	return viper.GetIntSlice(key)
 }
 
+// GetFloat64 retrieves a value from the properties map by key and returns it as a float64.
+// If the key is not found, it returns 0.
+// Example: GetFloat64("server.port") might return 8080.
 func GetFloat64(key string) float64 {
 	return viper.GetFloat64(key)
 }
 
+// GetSizeInBytes retrieves a value from the properties map by key and returns it as a uint.
+// If the key is not found, it returns 0.
+// Example: GetSizeInBytes("server.port") might return 8080.
 func GetSizeInBytes(key string) uint {
 	return viper.GetSizeInBytes(key)
 }
 
+// GetStringSlice retrieves a value from the properties map by key and returns it as a string slice.
+// If the key is not found, it returns an empty slice.
+// Example: GetStringSlice("server.ports") might return []string{"8080", "8081"}.
 func GetStringSlice(key string) []string {
 	return viper.GetStringSlice(key)
 }

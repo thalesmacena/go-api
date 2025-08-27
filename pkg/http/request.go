@@ -2,6 +2,7 @@ package http
 
 import "fmt"
 
+// RequestMethod represents the HTTP method for the request.
 type RequestMethod string
 
 const (
@@ -12,6 +13,7 @@ const (
 	DELETE RequestMethod = "DELETE"
 )
 
+// Request represents an HTTP request with various configuration options.
 type Request struct {
 	requestClient      *Client
 	requestMethod      RequestMethod
@@ -23,52 +25,64 @@ type Request struct {
 	requestErrorResp   any
 }
 
+// NewHttpClientRequest creates a new Request object with the given client.
 func NewHttpClientRequest(client *Client) *Request {
 	return &Request{
 		requestClient: client,
+		requestMethod: GET,
+		requestPath:   "/",
 	}
 }
 
+// WithClient sets the client for the request.
 func (r *Request) WithClient(client *Client) *Request {
 	r.requestClient = client
 	return r
 }
 
+// WithMethod sets the HTTP method for the request.
 func (r *Request) WithMethod(method RequestMethod) *Request {
 	r.requestMethod = method
 	return r
 }
 
+// WithPath sets the path for the request.
 func (r *Request) WithPath(path string) *Request {
 	r.requestPath = path
 	return r
 }
 
+// WithQueryParams sets the query parameters for the request.
 func (r *Request) WithQueryParams(params map[string]string) *Request {
 	r.requestQueryParams = params
 	return r
 }
 
+// WithHeaders sets the headers for the request.
 func (r *Request) WithHeaders(headers map[string]string) *Request {
 	r.requestHeaders = headers
 	return r
 }
 
+// WithBody sets the body for the request.
 func (r *Request) WithBody(body any) *Request {
 	r.requestBody = body
 	return r
 }
 
+// WithSuccessResp sets the success response for the request.
 func (r *Request) WithSuccessResp(successResp any) *Request {
 	r.requestSuccessResp = successResp
 	return r
 }
 
+// WithErrorResp sets the error response for the request.
 func (r *Request) WithErrorResp(errorResp any) *Request {
 	r.requestErrorResp = errorResp
 	return r
 }
 
+// Execute sends the request and returns the success response, error response, status code, and error if any.
 func (r *Request) Execute() (any, any, int, error) {
 	if r.requestClient == nil {
 		return nil, nil, 0, fmt.Errorf("client is required")

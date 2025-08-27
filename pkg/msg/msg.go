@@ -82,6 +82,9 @@ func GetMessage(key string, args ...interface{}) string {
 	return msg
 }
 
+
+
+// isPrimitive checks if the provided value is of a primitive type (bool, int, uint, float, or string).
 func isPrimitive(value interface{}) bool {
 	switch reflect.TypeOf(value).Kind() {
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
