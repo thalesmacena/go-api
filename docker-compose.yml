@@ -1,0 +1,95 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    build:
+      context: .
+      dockerfile: database.dockerfile
+    container_name: go-api-postgres
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - go-api-network
+
+  # LocalStack (AWS services emulator)
+  localstack:
+    image: localstack/localstack
+    container_name: go-api-localstack
+    environment:
+      - SERVICES=sqs,s3,dynamodb,lambda
+      - DEBUG=1
+      - DATA_DIR=/var/lib/localstack
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_OUTPUT=json
+      - PERSISTENCE=1
+    ports:
+      - "4566:4566"  # LocalStack main port
+      - "4510-4559:4510-4559"  # LocalStack service ports
+    volumes:
+      - ./opt/ready.d:/etc/localstack/init/ready.d
+      - localstack_data:/var/lib/localstack
+    networks:
+      - go-api-network
+
+
+  # GO API Application
+  go-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go-api-app
+    environment:
+      # Database configuration
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=postgres
+      - DB_SCHEMA=go
+      
+      # Server configuration
+      - SERVER_PORT=8080
+      
+      # AWS/LocalStack configuration
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_USE_SSL=false
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/go-api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - go-api-network
+
+volumes:
+  postgres_data:
+    driver: local
+  localstack_data:
+    driver: local
+
+networks:
+  go-api-network:
+    driver: bridge
