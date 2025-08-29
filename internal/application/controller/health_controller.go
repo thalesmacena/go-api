@@ -20,6 +20,14 @@ func (controller *HealthController) InitHealthRoutes() {
 	controller.api.GET("/health", controller.CheckHealth())
 }
 
+// CheckHealth godoc
+// @Summary Health check endpoint
+// @Description Check the health status of the application and its dependencies
+// @Tags health
+// @Accept json
+// @Produce json
+// @Success 200 {object} model.HealthResponse "Health status"
+// @Router /health [get]
 func (controller *HealthController) CheckHealth() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		healthResponse := controller.useCase.CheckHealth()

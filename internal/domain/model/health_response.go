@@ -19,4 +19,5 @@ type ComponentHealthStatus struct {
 type HealthResponse struct {
 	Status   HealthStatus          `json:"status"`
 	Database ComponentHealthStatus `json:"database"`
+	Queue    ComponentHealthStatus `json:"queue"`
 }

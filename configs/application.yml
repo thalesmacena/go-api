@@ -1,15 +1,45 @@
+# Application Configuration
 app:
   name: GO-API
   server:
     port: ${SERVER_PORT:8080}
-    context-path: /go-http
+    context-path: /go-api
+    timeout: 3s
+    body-limit: 10MB
   db:
-    host: localhost
-    port: 5432
-    username: admin
-    password: 123456
-    database: postgres
-    schema: go
-  short-url:
-    clear:
-      cron: "0 19 * * *"
+    host: ${DB_HOST:localhost}
+    port: ${DB_PORT:5432}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    database: ${DB_DATABASE:postgres}
+    schema: ${DB_SCHEMA:go}
+  cloud:
+    aws-region: us-east-1
+    aws-endpoint: ${AWS_ENDPOINT:http://localhost:4566}
+    aws-access-key-id: ${AWS_ACCESS_KEY_ID:test}
+    aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY:test}
+    aws-use-ssl: ${AWS_USE_SSL:false}
+
+# Short URL Service Configuration
+short-url:
+  clear:
+    cron: "0 19 * * *"
+
+# Weather Service Configuration
+weather:
+  base-url: https://brasilapi.com.br/api
+  follow-redirect: true
+  dismiss-404: false
+  max-idle-conns: 200
+  max-idle-conns-per-host: 50
+  idle-conn-timeout: 60s
+  connection-timeout: 60s
+  read-timeout: 60s
+  default-content-type: application/json
+  queue-name: weather-queue
+  batch-size: 10
+  worker:
+    max-number-of-messages: 10
+    wait-time-seconds: 20
+    pool-size: 1
+    log-level: info
