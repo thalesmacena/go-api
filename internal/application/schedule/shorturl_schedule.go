@@ -1,11 +1,12 @@
 package schedule
 
 import (
-	"github.com/robfig/cron/v3"
 	"go-api/internal/domain/usecase/shorturl"
 	"go-api/pkg/log"
 	"go-api/pkg/msg"
 	"go-api/pkg/resource"
+
+	"github.com/robfig/cron/v3"
 )
 
 type ShortUrlScheduler struct {
@@ -19,7 +20,7 @@ func NewShortUrlScheduler(useCase shorturl.UseCase) *ShortUrlScheduler {
 
 // InitShortUrlScheduleTasks initializes short url schedule tasks
 func (scheduler *ShortUrlScheduler) InitShortUrlScheduleTasks() {
-	_, err := scheduler.cron.AddFunc(resource.GetString("app.short-url.clear.cron"), scheduler.ClearShortUrlByExpiration)
+	_, err := scheduler.cron.AddFunc(resource.GetString("short-url.clear.cron"), scheduler.ClearShortUrlByExpiration)
 
 	if err != nil {
 		panic(err)

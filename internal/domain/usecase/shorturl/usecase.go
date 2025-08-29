@@ -6,8 +6,8 @@ import (
 )
 
 type UseCase interface {
-	FindAll(offset int, limit int) ([]entity.ShortUrl, error)
-	FindByURLPart(urlPart string, offset int, limit int) ([]entity.ShortUrl, error)
+	FindAll(page int, size int) (*model.Page[entity.ShortUrl], error)
+	FindByURLPart(urlPart string, page int, size int) (*model.Page[entity.ShortUrl], error)
 	FindByID(id string) (*entity.ShortUrl, error)
 	FindByHash(hash string) (*entity.ShortUrl, error)
 	Create(dto model.CreateShortUrlDTO) (*entity.ShortUrl, error)

@@ -10,6 +10,9 @@ type ShortUrlGateway interface {
 	FindByID(id string) (*entity.ShortUrl, error)
 	FindByHash(hash string) (*entity.ShortUrl, error)
 
+	CountAll() (int64, error)
+	CountByURLPart(urlPart string) (int64, error)
+
 	Create(shortURL entity.ShortUrl) (*entity.ShortUrl, error)
 	UpdateByHash(hash string, updated entity.ShortUrl) (*entity.ShortUrl, error)
 	UpdateByID(id string, updated entity.ShortUrl) (*entity.ShortUrl, error)

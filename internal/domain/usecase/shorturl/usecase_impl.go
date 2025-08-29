@@ -22,20 +22,106 @@ func NewShortUrlUseCase(gateway db.ShortUrlGateway) UseCase {
 	}
 }
 
-func (uc *shortUrlUseCase) FindAll(offset int, limit int) ([]entity.ShortUrl, error) {
-	return uc.gateway.FindAll(offset, limit)
+func (uc *shortUrlUseCase) FindAll(page int, size int) (*model.Page[entity.ShortUrl], error) {
+	// Ensure page is not negative (0-based pagination)
+	if page < 0 {
+		page = 0
+	}
+	offset := page * size
+
+	// Fetch data and count in parallel
+	var shortUrls []entity.ShortUrl
+	var totalElements int64
+	var shortUrlsErr, countErr error
+
+	done := make(chan bool, 2)
+
+	// Fetch short URLs
+	go func() {
+		shortUrls, shortUrlsErr = uc.gateway.FindAll(offset, size)
+		done <- true
+	}()
+
+	// Fetch count
+	go func() {
+		totalElements, countErr = uc.gateway.CountAll()
+		done <- true
+	}()
+
+	// Wait for both operations to complete
+	<-done
+	<-done
+
+	if shortUrlsErr != nil {
+		return nil, shortUrlsErr
+	}
+	if countErr != nil {
+		return nil, countErr
+	}
+
+	return model.NewPage(shortUrls, page, size, totalElements), nil
 }
 
-func (uc *shortUrlUseCase) FindByURLPart(urlPart string, offset int, limit int) ([]entity.ShortUrl, error) {
-	return uc.gateway.FindByURLPart(urlPart, offset, limit)
+func (uc *shortUrlUseCase) FindByURLPart(urlPart string, page int, size int) (*model.Page[entity.ShortUrl], error) {
+	// Ensure page is not negative (0-based pagination)
+	if page < 0 {
+		page = 0
+	}
+	offset := page * size
+
+	// Fetch data and count in parallel
+	var shortUrls []entity.ShortUrl
+	var totalElements int64
+	var shortUrlsErr, countErr error
+
+	done := make(chan bool, 2)
+
+	// Fetch short URLs
+	go func() {
+		shortUrls, shortUrlsErr = uc.gateway.FindByURLPart(urlPart, offset, size)
+		done <- true
+	}()
+
+	// Fetch count
+	go func() {
+		totalElements, countErr = uc.gateway.CountByURLPart(urlPart)
+		done <- true
+	}()
+
+	// Wait for both operations to complete
+	<-done
+	<-done
+
+	if shortUrlsErr != nil {
+		return nil, shortUrlsErr
+	}
+	if countErr != nil {
+		return nil, countErr
+	}
+
+	return model.NewPage(shortUrls, page, size, totalElements), nil
 }
 
 func (uc *shortUrlUseCase) FindByID(id string) (*entity.ShortUrl, error) {
-	return uc.gateway.FindByID(id)
+	shortUrl, err := uc.gateway.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if shortUrl == nil {
+		return nil, errors.New("short URL not found")
+	}
+	return shortUrl, nil
 }
 
 func (uc *shortUrlUseCase) FindByHash(hash string) (*entity.ShortUrl, error) {
-	return uc.gateway.FindByHash(hash)
+	shortUrl, err := uc.gateway.FindByHash(hash)
+	if err != nil {
+		return nil, err
+	}
+	if shortUrl == nil {
+		return nil, errors.New("short URL not found")
+	}
+	return shortUrl, nil
 }
 
 func (uc *shortUrlUseCase) Create(dto model.CreateShortUrlDTO) (*entity.ShortUrl, error) {

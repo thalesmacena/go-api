@@ -3,9 +3,10 @@ package db
 import (
 	"database/sql"
 	"errors"
-	"github.com/google/uuid"
 	"go-api/internal/domain/entity"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const timeLayout = "2006-01-02 15:04:05"
@@ -168,4 +169,21 @@ func (gateway *SQLCShortUrlGateway) DeleteByID(id string) error {
 func (gateway *SQLCShortUrlGateway) DeleteByHash(hash string) error {
 	_, err := gateway.DB.Exec(`DELETE FROM short_urls WHERE hash = $1`, hash)
 	return err
+}
+
+// CountAll returns the total count of short URLs
+func (gateway *SQLCShortUrlGateway) CountAll() (int64, error) {
+	var count int64
+	err := gateway.DB.QueryRow(`SELECT COUNT(*) FROM short_urls`).Scan(&count)
+	return count, err
+}
+
+// CountByURLPart returns the count of short URLs that contain the specified URL part
+func (gateway *SQLCShortUrlGateway) CountByURLPart(urlPart string) (int64, error) {
+	var count int64
+	err := gateway.DB.QueryRow(`
+		SELECT COUNT(*) 
+		FROM short_urls 
+		WHERE url ILIKE '%' || $1 || '%'`, urlPart).Scan(&count)
+	return count, err
 }
