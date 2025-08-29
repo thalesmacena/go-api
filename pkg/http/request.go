@@ -23,6 +23,7 @@ type Request struct {
 	requestBody        any
 	requestSuccessResp any
 	requestErrorResp   any
+	requestBackoff     *BackoffConfig
 }
 
 // NewHttpClientRequest creates a new Request object with the given client.
@@ -82,6 +83,12 @@ func (r *Request) WithErrorResp(errorResp any) *Request {
 	return r
 }
 
+// WithBackoff sets the backoff configuration for the request, overriding the client's default.
+func (r *Request) WithBackoff(backoff *BackoffConfig) *Request {
+	r.requestBackoff = backoff
+	return r
+}
+
 // Execute sends the request and returns the success response, error response, status code, and error if any.
 func (r *Request) Execute() (any, any, int, error) {
 	if r.requestClient == nil {
@@ -94,7 +101,7 @@ func (r *Request) Execute() (any, any, int, error) {
 		return nil, nil, 0, fmt.Errorf("path is required")
 	}
 
-	return r.requestClient.doRequest(
+	return r.requestClient.doRequestWithBackoff(
 		string(r.requestMethod),
 		r.requestPath,
 		r.requestQueryParams,
@@ -102,5 +109,6 @@ func (r *Request) Execute() (any, any, int, error) {
 		r.requestBody,
 		r.requestSuccessResp,
 		r.requestErrorResp,
+		r.requestBackoff,
 	)
 }
