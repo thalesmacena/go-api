@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"go-api/pkg/log"
+	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
@@ -36,6 +38,24 @@ const (
 	InfoLevel
 )
 
+// HealthStatus represents the health status of the SQS worker
+type HealthStatus string
+
+const (
+	// StatusUp indicates the worker is healthy and running
+	StatusUp HealthStatus = "UP"
+	// StatusDown indicates the worker is not healthy or not running
+	StatusDown HealthStatus = "DOWN"
+	// StatusUnknown indicates the worker status cannot be determined
+	StatusUnknown HealthStatus = "UNKNOWN"
+)
+
+// WorkerHealthCheck represents the health check response for a SQS worker
+type WorkerHealthCheck struct {
+	Status  HealthStatus      `json:"status"`
+	Details map[string]string `json:"details"`
+}
+
 // WorkerConfig defines the configuration options for a Worker
 type WorkerConfig struct {
 	MaxNumberOfMessages int64
@@ -54,6 +74,8 @@ type Worker struct {
 	poolSize            int64
 	logLevel            LogLevel
 	handler             Handler
+	isRunning           int32 // atomic flag to track if worker is running
+	messagesProcessed   int64 // atomic counter for processed messages
 }
 
 // NewWorker creates and returns a new Worker.
@@ -121,6 +143,9 @@ func NewWorker(sqsClient sqsiface.SQSAPI, queueName string, handler Handler, con
 // It will spawn PoolSize number of workers that keep polling messages
 // until the provided context is canceled.
 func (w *Worker) Start(ctx context.Context) {
+	atomic.StoreInt32(&w.isRunning, 1)
+	defer atomic.StoreInt32(&w.isRunning, 0)
+
 	var wg sync.WaitGroup
 
 	for i := int64(0); i < w.poolSize; i++ {
@@ -176,6 +201,7 @@ func (w *Worker) handleMessage(msg *sqs.Message) {
 		w.logf(ErrorLevel, "failed to delete message ID %s: %v", safeMessageID(msg), err)
 	} else {
 		w.logf(InfoLevel, "successfully deleted message ID %s", safeMessageID(msg))
+		atomic.AddInt64(&w.messagesProcessed, 1)
 	}
 }
 
@@ -196,4 +222,79 @@ func safeMessageID(msg *sqs.Message) string {
 		return ""
 	}
 	return *msg.MessageId
+}
+
+// ParseLogLevel converts string log level to sqs.LogLevel
+func ParseLogLevel(level string) LogLevel {
+	switch level {
+	case "silent":
+		return Silent
+	case "error":
+		return ErrorLevel
+	case "info":
+		return InfoLevel
+	default:
+		return InfoLevel
+	}
+}
+
+// HealthCheck returns the health status and details of the SQS worker
+func (w *Worker) HealthCheck() WorkerHealthCheck {
+	isRunning := atomic.LoadInt32(&w.isRunning) == 1
+	messagesProcessed := atomic.LoadInt64(&w.messagesProcessed)
+
+	var status HealthStatus
+	if isRunning {
+		status = StatusUp
+	} else {
+		status = StatusDown
+	}
+
+	// Test queue connectivity by attempting to get queue attributes
+	queueAvailable := w.testQueueConnectivity()
+	if !queueAvailable {
+		status = StatusDown
+	}
+
+	details := map[string]string{
+		"queue_name":             w.queueName,
+		"queue_url":              w.queueURL,
+		"pool_size":              strconv.FormatInt(w.poolSize, 10),
+		"max_number_of_messages": strconv.FormatInt(w.maxNumberOfMessages, 10),
+		"wait_time_seconds":      strconv.FormatInt(w.waitTimeSeconds, 10),
+		"log_level":              w.getLogLevelString(),
+		"is_running":             strconv.FormatBool(isRunning),
+		"messages_processed":     strconv.FormatInt(messagesProcessed, 10),
+		"queue_available":        strconv.FormatBool(queueAvailable),
+	}
+
+	return WorkerHealthCheck{
+		Status:  status,
+		Details: details,
+	}
+}
+
+// testQueueConnectivity tests if the queue is accessible
+func (w *Worker) testQueueConnectivity() bool {
+	_, err := w.sqsClient.GetQueueAttributes(&sqs.GetQueueAttributesInput{
+		QueueUrl: &w.queueURL,
+		AttributeNames: []*string{
+			&[]string{"ApproximateNumberOfMessages"}[0],
+		},
+	})
+	return err == nil
+}
+
+// getLogLevelString returns the string representation of the log level
+func (w *Worker) getLogLevelString() string {
+	switch w.logLevel {
+	case Silent:
+		return "silent"
+	case ErrorLevel:
+		return "error"
+	case InfoLevel:
+		return "info"
+	default:
+		return "unknown"
+	}
 }
