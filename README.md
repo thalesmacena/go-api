@@ -374,7 +374,6 @@ curl -X POST http://localhost:8080/go-api/weather/batch \
 
 ### 📊 Features Overview
 
-```html
 <div style="display: flex; justify-content: space-around; margin: 20px 0;">
   <div style="text-align: center; padding: 15px; border: 2px solid #667eea; border-radius: 10px; margin: 5px;">
     <h4 style="color: #667eea; margin: 0;">🔗 URL Shortener</h4>
@@ -389,7 +388,6 @@ curl -X POST http://localhost:8080/go-api/weather/batch \
     <p style="margin: 5px 0; font-size: 14px;">Real-time system health checks for all services</p>
   </div>
 </div>
-```
 
 ---
 
