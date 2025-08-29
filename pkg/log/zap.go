@@ -143,6 +143,22 @@ func Debugf(message string, args ...interface{}) {
 	Logger.Debugf(message, formattedArgs...)
 }
 
+// Warn logs a message at WarnLevel. The message includes any fields passed at the log site, as well as any fields accumulated on the logger.
+func Warn(message string, fields ...zap.Field) {
+	logger.Warn(message, fields...)
+}
+
+// Warnw logs a message with some additional context. The variadic key-value pairs are treated as they are in With.
+func Warnw(message string, keysAndValues ...interface{}) {
+	Logger.Warnw(message, keysAndValues...)
+}
+
+// Warnf formats the message according to the format specifier and logs it at WarnLevel.
+func Warnf(message string, args ...interface{}) {
+	formattedArgs := formatArgsForJSON(args)
+	Logger.Warnf(message, formattedArgs...)
+}
+
 // Error logs a message at ErrorLevel. The message includes any fields passed at the log site, as well as any fields accumulated on the logger.
 func Error(message string, fields ...zap.Field) {
 	logger.Error(message, fields...)
