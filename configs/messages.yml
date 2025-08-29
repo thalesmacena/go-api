@@ -1,6 +1,8 @@
 app:
   start: Starting Application
   started: Application Started
+  req-end: "Request {0} {1} Completed with status {2}. TransactionId: {4}, Timer: {3}"
+  req-fail: "Request {0} {1} fail with status {2}, {5}. TransactionId: {4}, Timer: {3}"
 
 short-url:
   cron:
@@ -13,13 +15,3 @@ short-url:
     existent-hash: hash for short url already exists
     not-found: short url not found
     clear-failed: Failed to Clear Short Url By Expiration
-
-
-
-foo:
-  bar:
-    foo:
-      bar:
-        foo:
-          bar: Teste
-      foo: Teste2
