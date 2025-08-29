@@ -1,0 +1,500 @@
+basePath: /go-api
+definitions:
+  entity.City:
+    properties:
+      code:
+        type: string
+      createdDate:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      state:
+        type: string
+      updatedDate:
+        type: string
+      waveConditions:
+        items:
+          $ref: '#/definitions/entity.WaveCondition'
+        type: array
+      weatherForecasts:
+        items:
+          $ref: '#/definitions/entity.WeatherForecast'
+        type: array
+    type: object
+  entity.ShortUrl:
+    properties:
+      createdDate:
+        type: string
+      expiration:
+        type: string
+      hash:
+        type: string
+      id:
+        type: string
+      updatedDate:
+        type: string
+      url:
+        type: string
+    type: object
+  entity.WaveCondition:
+    properties:
+      agitation:
+        type: string
+      cityId:
+        type: string
+      createdDate:
+        type: string
+      day:
+        type: string
+      hour:
+        type: integer
+      id:
+        type: string
+      updatedDate:
+        type: string
+      waveDirection:
+        type: string
+      waveDirectionDescription:
+        type: string
+      waveHeight:
+        type: number
+      wind:
+        type: number
+      windDirection:
+        type: string
+      windDirectionDescription:
+        type: string
+    type: object
+  entity.WeatherForecast:
+    properties:
+      cityId:
+        type: string
+      condition:
+        type: string
+      conditionDescription:
+        type: string
+      createdDate:
+        type: string
+      day:
+        type: string
+      id:
+        type: string
+      max:
+        type: integer
+      min:
+        type: integer
+      ultraVioletIndex:
+        type: integer
+      updatedDate:
+        type: string
+    type: object
+  model.ComponentHealthStatus:
+    properties:
+      details:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        $ref: '#/definitions/model.HealthStatus'
+    type: object
+  model.CreateCityMonitoringDTO:
+    properties:
+      cityName:
+        type: string
+      state:
+        type: string
+    required:
+    - cityName
+    - state
+    type: object
+  model.CreateShortUrlDTO:
+    properties:
+      expiration:
+        type: string
+      url:
+        type: string
+    type: object
+  model.HealthResponse:
+    properties:
+      database:
+        $ref: '#/definitions/model.ComponentHealthStatus'
+      queue:
+        $ref: '#/definitions/model.ComponentHealthStatus'
+      status:
+        $ref: '#/definitions/model.HealthStatus'
+    type: object
+  model.HealthStatus:
+    enum:
+    - UP
+    - DOWN
+    - UNKNOWN
+    type: string
+    x-enum-varnames:
+    - StatusUp
+    - StatusDown
+    - StatusUnknown
+  model.UpdateShortUrlDTO:
+    properties:
+      expiration:
+        type: string
+      hash:
+        type: string
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A REST API for URL shortening and weather monitoring services
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Go API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Check the health status of the application and its dependencies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health status
+          schema:
+            $ref: '#/definitions/model.HealthResponse'
+      summary: Health check endpoint
+      tags:
+      - health
+  /short-url:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all short URLs with pagination and optional URL filtering
+      parameters:
+      - default: 0
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: URL part to filter by
+        in: query
+        name: urlPart
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated list of short URLs
+          schema:
+            items:
+              $ref: '#/definitions/entity.ShortUrl'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all short URLs
+      tags:
+      - short-url
+    post:
+      consumes:
+      - application/json
+      description: Create a new short URL from the provided URL and expiration
+      parameters:
+      - description: Short URL creation data
+        in: body
+        name: shortUrl
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateShortUrlDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created short URL
+          schema:
+            $ref: '#/definitions/entity.ShortUrl'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a new short URL
+      tags:
+      - short-url
+  /short-url/{hash}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a short URL by its hash
+      parameters:
+      - description: Short URL hash
+        in: path
+        name: hash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Short URL deleted successfully
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete short URL by hash
+      tags:
+      - short-url
+    get:
+      consumes:
+      - application/json
+      description: Find a short URL by its hash and redirect to the original URL
+      parameters:
+      - description: Short URL hash
+        in: path
+        name: hash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "301":
+          description: Redirect to original URL
+        "404":
+          description: Short URL not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get short URL by hash and redirect
+      tags:
+      - short-url
+    put:
+      consumes:
+      - application/json
+      description: Update a short URL's details by its hash
+      parameters:
+      - description: Short URL hash
+        in: path
+        name: hash
+        required: true
+        type: string
+      - description: Short URL update data
+        in: body
+        name: shortUrl
+        required: true
+        schema:
+          $ref: '#/definitions/model.UpdateShortUrlDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated short URL
+          schema:
+            $ref: '#/definitions/entity.ShortUrl'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update short URL by hash
+      tags:
+      - short-url
+  /weather:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all monitored cities with pagination and filtering options
+      parameters:
+      - default: 0
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: City name prefix to filter by
+        in: query
+        name: namePrefix
+        type: string
+      - description: State to filter by
+        in: query
+        name: state
+        type: string
+      - description: Date to filter from (YYYY-MM-DD)
+        in: query
+        name: fromDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated list of cities
+          schema:
+            items:
+              $ref: '#/definitions/entity.City'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all monitored cities
+      tags:
+      - weather
+    post:
+      consumes:
+      - application/json
+      description: Add a new city to the weather monitoring system
+      parameters:
+      - description: City monitoring data
+        in: body
+        name: city
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateCityMonitoringDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: City monitoring created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request body or missing required fields
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create city monitoring
+      tags:
+      - weather
+  /weather/schedule:
+    get:
+      consumes:
+      - application/json
+      description: Schedule a weather monitoring update for all cities in the system
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Cities monitoring update scheduled successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Schedule weather update for all cities
+      tags:
+      - weather
+  /weather/state/{state}/city/{city}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a city from the weather monitoring system
+      parameters:
+      - description: City name
+        in: path
+        name: city
+        required: true
+        type: string
+      - description: State name
+        in: path
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: City monitoring removed successfully
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove city monitoring
+      tags:
+      - weather
+    get:
+      consumes:
+      - application/json
+      description: Find a specific city by its name and state with weather data
+      parameters:
+      - description: City name
+        in: path
+        name: city
+        required: true
+        type: string
+      - description: State name
+        in: path
+        name: state
+        required: true
+        type: string
+      - description: Date to filter from (YYYY-MM-DD)
+        in: query
+        name: fromDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: City data with weather information
+          schema:
+            $ref: '#/definitions/entity.City'
+        "404":
+          description: City not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get city by name and state
+      tags:
+      - weather
+schemes:
+- http
+- https
+swagger: "2.0"
