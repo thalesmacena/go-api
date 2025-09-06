@@ -1,5 +1,5 @@
 <div align="center">
-  <img src=".github/banner.svg" width="546" alt="GO-API" />
+  <img src=".github/banner.svg" width="100%" alt="GO-API" style="max-width: 800px; height: auto;" />
   <br />
   <p>
     <img src="https://img.shields.io/badge/made%20by-Thales%20Macena-2D325E?labelColor=F0DB4F&style=for-the-badge&logo=visual-studio-code&logoColor=2D325E" alt="Made by Thales Macena">
@@ -35,11 +35,13 @@
 - [GO-API](#go-api)
   - [📋 Table of Contents](#-table-of-contents)
   - [🚀 Features](#-features)
+    - [Redis Package Highlights](#redis-package-highlights)
   - [🛠️ Tech Stack](#️-tech-stack)
   - [📋 Prerequisites](#-prerequisites)
   - [🏃‍♂️ Quick Start](#️-quick-start)
     - [Using Docker Compose (Recommended)](#using-docker-compose-recommended)
     - [Local Development](#local-development)
+    - [Redis Examples](#redis-examples)
   - [🔧 Configuration](#-configuration)
     - [Environment Variables](#environment-variables)
   - [📚 API Documentation](#-api-documentation)
