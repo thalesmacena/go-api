@@ -17,8 +17,8 @@ func main() {
 		WithPort(6379).
 		WithPassword("").
 		WithDatabase(0).
-		WithPoolSize(10).
 		WithMinIdleConns(5).
+		WithMaxIdleConns(10).
 		WithDialTimeout(5 * time.Second).
 		WithReadTimeout(3 * time.Second).
 		WithWriteTimeout(3 * time.Second).

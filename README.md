@@ -64,12 +64,21 @@
 - **Health Check**: System health monitoring with database and queue status
 - **URL Shortener**: Create and manage short URLs with automatic cleanup
 - **Weather Service**: Asynchronous weather data processing using AWS SQS
-- **Redis Cache**: High-performance caching with configurable TTL policies
+- **Redis (Cache, Lock, Pub/Sub)**: High-performance cache with per-cache TTL, distributed locks with auto-refresh, and namespaced Pub/Sub with concurrent workers and auto-reconnect
 - **Clean Architecture**: Domain-driven design with clear separation of concerns
 - **Database Support**: PostgreSQL with GORM and SQLC
 - **AWS Integration**: LocalStack for local development with SQS, S3, DynamoDB
 - **Scheduled Tasks**: Automated cleanup and maintenance jobs
 - **Request Logging**: Comprehensive request/response logging middleware
+
+### Redis Package Highlights
+
+- Client with fluent configuration: `NewRedisConfig().WithHost(...).WithPoolSize(...)`
+- Cache with per-cache TTL: `WithCacheTTL("user_cache", 2*time.Hour)` and default TTL
+- Namespaced cache keys: `CacheName::cacheKey`
+- Distributed locks with auto-refresh and namespacing: `LockNamespace::lockKey`
+- Pub/Sub with namespaced channels, concurrent workers and auto-reconnect
+- Health checks for Redis client and Pub/Sub
 
 ## 🛠️ Tech Stack
 
@@ -132,6 +141,21 @@
    go run cmd/go-api/main.go
    ```
 
+### Redis Examples
+
+Run focused Redis examples:
+
+```bash
+# Main Redis example (configuration, cache, JSON, batch, scan)
+go run example/redis/main.go
+
+# Distributed Lock example
+go run example/redis/lock/main.go
+
+# Pub/Sub example
+go run example/redis/pubsub/main.go
+```
+
 ## 🔧 Configuration
 
 The application uses environment variables and YAML configuration. Key settings:
@@ -151,6 +175,9 @@ The application uses environment variables and YAML configuration. Key settings:
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | `redis_password` | Redis password |
 | `REDIS_DB` | `0` | Redis database number |
+| `REDIS_POOL_SIZE` | `10` | Redis connection pool size |
+| `REDIS_MIN_IDLE_CONNS` | `5` | Redis min idle connections |
+| `REDIS_MAX_IDLE_CONNS` | `10` | Redis max idle connections |
 | `AWS_ENDPOINT` | `http://localhost:4566` | AWS endpoint (LocalStack) |
 | `AWS_ACCESS_KEY_ID` | `test` | AWS access key |
 | `AWS_SECRET_ACCESS_KEY` | `test` | AWS secret key |
@@ -216,6 +243,7 @@ The generated documentation files will be placed in the `docs/` directory:
 │   ├── http/            # HTTP utilities
 │   ├── log/             # Logging utilities
 │   ├── msg/             # Message handling
+│   ├── redis/           # Redis package (client, cache, lock, pubsub, health, config)
 │   ├── resource/        # Resource management
 │   ├── sqs/             # SQS utilities
 │   └── util/            # General utilities
@@ -237,6 +265,7 @@ The generated documentation files will be placed in the `docs/` directory:
 │   ├── http/            # HTTP client examples
 │   ├── log/             # Logging examples
 │   ├── msg/             # Message handling examples
+│   ├── redis/           # Redis examples (main, pubsub, lock)
 │   ├── resource/        # Resource management examples
 │   └── sqs/             # SQS examples
 ├── scripts/              # Build and deployment scripts
@@ -298,7 +327,7 @@ docker compose up -d --build
 
 ### Monitoring & Logging
 
-- **Health Checks**: Built-in health monitoring for database and queue connections
+- **Health Checks**: Built-in health monitoring for database, Redis (client and Pub/Sub), and queue connections
 - **Request Logging**: All HTTP requests are logged with detailed information
 - **Structured Logging**: Uses Uber Zap for structured, high-performance logging
 

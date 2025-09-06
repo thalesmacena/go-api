@@ -25,6 +25,9 @@ app:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:redis_password}
       db: ${REDIS_DB:0}
+      pool:
+        min-idle-conns: ${REDIS_MIN_IDLE_CONNS:5}
+        max-idle-conns: ${REDIS_MAX_IDLE_CONNS:10}
       ttl:
         default: 1h
         short-url: 24h

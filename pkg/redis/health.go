@@ -71,7 +71,6 @@ func (h *HealthChecker) HealthCheck() RedisHealthCheck {
 		"host":                  h.config.Host,
 		"port":                  strconv.Itoa(h.config.Port),
 		"database":              strconv.Itoa(h.config.Database),
-		"pool_size":             strconv.Itoa(h.config.PoolSize),
 		"min_idle_conns":        strconv.Itoa(h.config.MinIdleConns),
 		"max_retries":           strconv.Itoa(h.config.MaxRetries),
 		"dial_timeout":          h.config.DialTimeout.String(),
@@ -150,12 +149,6 @@ func (h *HealthChecker) testConnectionPool() bool {
 	// Check if pool is accessible
 	if stats.TotalConns == 0 && stats.IdleConns == 0 {
 		h.lastError = "connection pool is not accessible"
-		return false
-	}
-
-	// Check for reasonable pool utilization
-	if stats.TotalConns > uint32(h.config.PoolSize) {
-		h.lastError = fmt.Sprintf("pool size exceeded: %d > %d", stats.TotalConns, h.config.PoolSize)
 		return false
 	}
 

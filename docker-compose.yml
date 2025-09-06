@@ -116,6 +116,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis_password
       - REDIS_DB=0
+      - REDIS_MIN_IDLE_CONNS=5
+      - REDIS_MAX_IDLE_CONNS=10
       
     expose:
       - "8081"
@@ -162,6 +164,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis_password
       - REDIS_DB=0
+      - REDIS_MIN_IDLE_CONNS=5
+      - REDIS_MAX_IDLE_CONNS=10
    
     expose:
       - "8082"

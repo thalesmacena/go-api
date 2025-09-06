@@ -15,10 +15,10 @@ type Config struct {
 	Password string
 	// Database is the Redis database number
 	Database int
-	// PoolSize is the maximum number of socket connections
-	PoolSize int
 	// MinIdleConns is the minimum number of idle connections
 	MinIdleConns int
+	// MaxIdleConns is the maximum number of idle connections
+	MaxIdleConns int
 	// MaxRetries is the maximum number of retries for failed commands
 	MaxRetries int
 	// DialTimeout is the timeout for establishing connections
@@ -42,8 +42,8 @@ func NewRedisConfig() *Config {
 		Port:            6379,
 		Password:        "",
 		Database:        0,
-		PoolSize:        10,
 		MinIdleConns:    5,
+		MaxIdleConns:    10,
 		MaxRetries:      3,
 		DialTimeout:     5 * time.Second,
 		ReadTimeout:     3 * time.Second,
@@ -84,21 +84,21 @@ func (c *Config) WithDatabase(database int) *Config {
 	return c
 }
 
-// WithPoolSize sets the maximum number of socket connections
-func (c *Config) WithPoolSize(poolSize int) *Config {
-	if poolSize < 1 {
-		panic(fmt.Sprintf("invalid pool size: %d, must be greater than 0", poolSize))
-	}
-	c.PoolSize = poolSize
-	return c
-}
-
 // WithMinIdleConns sets the minimum number of idle connections
 func (c *Config) WithMinIdleConns(minIdleConns int) *Config {
 	if minIdleConns < 0 {
 		panic(fmt.Sprintf("invalid min idle connections: %d, must be non-negative", minIdleConns))
 	}
 	c.MinIdleConns = minIdleConns
+	return c
+}
+
+// WithMaxIdleConns sets the maximum number of idle connections
+func (c *Config) WithMaxIdleConns(maxIdleConns int) *Config {
+	if maxIdleConns < 0 {
+		panic(fmt.Sprintf("invalid max idle connections: %d, must be non-negative", maxIdleConns))
+	}
+	c.MaxIdleConns = maxIdleConns
 	return c
 }
 
@@ -184,11 +184,11 @@ func (c *Config) Validate() error {
 	if c.Database < 0 || c.Database > 15 {
 		return fmt.Errorf("invalid database: %d, must be between 0 and 15", c.Database)
 	}
-	if c.PoolSize < 1 {
-		return fmt.Errorf("invalid pool size: %d, must be greater than 0", c.PoolSize)
-	}
 	if c.MinIdleConns < 0 {
 		return fmt.Errorf("invalid min idle connections: %d, must be non-negative", c.MinIdleConns)
+	}
+	if c.MaxIdleConns < 0 {
+		return fmt.Errorf("invalid max idle connections: %d, must be non-negative", c.MaxIdleConns)
 	}
 	if c.MaxRetries < 0 {
 		return fmt.Errorf("invalid max retries: %d, must be non-negative", c.MaxRetries)

@@ -41,8 +41,8 @@ func main() {
 		WithPort(6379).
 		WithPassword("").
 		WithDatabase(0).
-		WithPoolSize(20).
 		WithMinIdleConns(10).
+		WithMaxIdleConns(15).
 		WithMaxRetries(5).
 		WithDialTimeout(10 * time.Second).
 		WithReadTimeout(5 * time.Second).
@@ -63,8 +63,7 @@ func main() {
 	fmt.Println("\n3. Using partial configuration:")
 	partialConfig := redis.NewRedisConfig().
 		WithHost("localhost").
-		WithPort(6379).
-		WithPoolSize(15)
+		WithPort(6379)
 
 	client3 := redis.NewClient(partialConfig)
 	defer client3.Close()
@@ -112,8 +111,8 @@ func main() {
 		WithPort(6379).
 		WithPassword("").
 		WithDatabase(0).
-		WithPoolSize(10).
 		WithMinIdleConns(5).
+		WithMaxIdleConns(10).
 		WithDialTimeout(5 * time.Second).
 		WithReadTimeout(3 * time.Second).
 		WithWriteTimeout(3 * time.Second).
@@ -278,14 +277,13 @@ func main() {
 	// PubSub builder example
 	fmt.Println("\n3. PubSub Builder Example:")
 	pubsubBuilder := redis.NewPubSubConfig().
-		WithPoolSize(3).
 		WithLogLevel(redis.InfoLevel).
 		WithReconnectDelay(2 * time.Second).
 		WithMaxReconnectAttempts(5).
 		WithChannelNamespace("notification_service")
 
-	fmt.Printf("✓ PubSub builder works - PoolSize: %d, LogLevel: %d\n",
-		pubsubBuilder.PoolSize, pubsubBuilder.LogLevel)
+	fmt.Printf("✓ PubSub builder works - LogLevel: %d\n",
+		pubsubBuilder.LogLevel)
 	fmt.Println("  - Channel format: notification_service::channel_name")
 
 	// =============================================================================
@@ -297,8 +295,7 @@ func main() {
 
 	healthConfig := redis.NewRedisConfig().
 		WithHost("localhost").
-		WithPort(6379).
-		WithPoolSize(5)
+		WithPort(6379)
 
 	healthClient := redis.NewClient(healthConfig)
 	defer healthClient.Close()
