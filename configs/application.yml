@@ -19,6 +19,16 @@ app:
     aws-access-key-id: ${AWS_ACCESS_KEY_ID:test}
     aws-secret-access-key: ${AWS_SECRET_ACCESS_KEY:test}
     aws-use-ssl: ${AWS_USE_SSL:false}
+  cache:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_password}
+      db: ${REDIS_DB:0}
+      ttl:
+        default: 1h
+        short-url: 24h
+        weather: 30m
 
 # Short URL Service Configuration
 short-url:
