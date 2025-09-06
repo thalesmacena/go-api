@@ -44,13 +44,54 @@ services:
     networks:
       - go-api-network
 
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: go-api-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=redis_password
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./opt/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - go-api-network
 
-  # GO API Application
-  go-api:
+  # NGINX Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: go-api-nginx
+    environment:
+      - GO_API_INSTANCES=go-api-1:8081,go-api-2:8082
+    ports:
+      - "8080:80"
+    volumes:
+      - ./opt/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./opt/init-nginx.sh:/init-nginx.sh:ro
+    command: ["/bin/sh", "/init-nginx.sh"]
+    depends_on:
+      - go-api-1
+      - go-api-2
+    restart: unless-stopped
+    networks:
+      - go-api-network
+
+  # GO API Application - Instance 1
+  go-api-1:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: go-api-app
+    container_name: go-api-app-1
     environment:
       # Database configuration
       - DB_HOST=postgres
@@ -61,7 +102,7 @@ services:
       - DB_SCHEMA=go
       
       # Server configuration
-      - SERVER_PORT=8080
+      - SERVER_PORT=8081
       
       # AWS/LocalStack configuration
       - AWS_REGION=us-east-1
@@ -69,13 +110,66 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_USE_SSL=false
-    ports:
-      - "8080:8080"
+      
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_DB=0
+      
+    expose:
+      - "8081"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/go-api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/go-api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - go-api-network
+
+  # GO API Application - Instance 2
+  go-api-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go-api-app-2
+    environment:
+      # Database configuration
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=postgres
+      - DB_SCHEMA=go
+      
+      # Server configuration
+      - SERVER_PORT=8082
+      
+      # AWS/LocalStack configuration
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_USE_SSL=false
+      
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_DB=0
+   
+    expose:
+      - "8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/go-api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

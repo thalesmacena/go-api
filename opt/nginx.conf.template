@@ -1,0 +1,54 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Enable logging for debugging
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log debug;
+
+    upstream go-api-backend {
+        # Load balancing method (round_robin is default)
+        # You can also use: least_conn, ip_hash, hash, random
+        least_conn;
+        
+        ${UPSTREAM_SERVERS}
+        
+        # Health check settings
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            proxy_pass http://go-api-backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Connection settings
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+            
+            # Retry settings
+            proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+            proxy_next_upstream_tries 3;
+            proxy_next_upstream_timeout 10s;
+            
+            # Keep connections alive
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        # Health check endpoint for NGINX itself
+        location /nginx-health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}

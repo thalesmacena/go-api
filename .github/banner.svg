@@ -1,60 +1,242 @@
 <svg width="1200" height="300" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    <!-- Dark shadcn-inspired gradient background -->
+    <radialGradient id="stormGradient" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#000000;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#0a0a0a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#18181b;stop-opacity:1" />
+    </radialGradient>
+    
+    <!-- Go-inspired gradient -->
+    <linearGradient id="lightningGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ADD8;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#007d9c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00758f;stop-opacity:1" />
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.3"/>
+    
+    <!-- Enhanced Glassmorphism backgrounds -->
+    <linearGradient id="glassGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <!-- Technology-specific glass gradients -->
+    <linearGradient id="goGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ADD8;stop-opacity:0.2" />
+      <stop offset="50%" style="stop-color:#00ADD8;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#00ADD8;stop-opacity:0.05" />
+    </linearGradient>
+    
+    <linearGradient id="echoGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B6B;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#FF6B6B;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#FF6B6B;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <linearGradient id="nginxGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#009639;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#009639;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#009639;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <linearGradient id="postgresGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#336791;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#336791;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#336791;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <linearGradient id="redisGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#DC382D;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#DC382D;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#DC382D;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <linearGradient id="awsGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF9900;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#FF9900;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#FF9900;stop-opacity:0.03" />
+    </linearGradient>
+    
+    <!-- Electric glow -->
+    <filter id="electricGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
+    
+    <!-- Text glow -->
+    <filter id="textGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Enhanced glass effect filter -->
+    <filter id="glassEffect" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="blur"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    
+    <!-- Inner glow for glass -->
+    <filter id="innerGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Lightning animation -->
+    <animate id="lightningFlash" attributeName="opacity" values="0.3;1;0.3;1;0.3" dur="0.1s" begin="0s;3s;6s;9s" />
   </defs>
   
   <!-- Background -->
-  <rect width="1200" height="300" fill="url(#gradient)"/>
+  <rect width="1200" height="300" fill="url(#stormGradient)"/>
   
-  <!-- Decorative elements -->
-  <circle cx="100" cy="100" r="30" fill="#ffffff" opacity="0.1"/>
-  <circle cx="1100" cy="200" r="40" fill="#ffffff" opacity="0.1"/>
-  <rect x="50" y="250" width="60" height="4" fill="#ffffff" opacity="0.2"/>
-  <rect x="1080" y="50" width="80" height="4" fill="#ffffff" opacity="0.2"/>
+  <!-- Atmospheric particles -->
+  <circle cx="150" cy="80" r="1" fill="#00ADD8" opacity="0.4">
+    <animate attributeName="opacity" values="0.4;0.1;0.4" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="950" cy="120" r="1.5" fill="#007d9c" opacity="0.3">
+    <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1050" cy="60" r="1" fill="#00ADD8" opacity="0.3">
+    <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
   
-  <!-- Main title -->
-  <text x="600" y="120" font-family="Arial, sans-serif" font-size="72" font-weight="bold" text-anchor="middle" fill="#ffffff" filter="url(#shadow)">
+  <!-- Main lightning bolt - left side -->
+  <path d="M180 50 L200 90 L190 90 L210 140 L180 100 L190 100 Z" 
+        fill="url(#lightningGradient)" 
+        filter="url(#electricGlow)"
+        opacity="0.8"
+        transform-origin="195 95">
+    <animateTransform attributeName="transform" type="scale" values="1;1.1;1" dur="0.1s" begin="0s;3s;6s;9s"/>
+  </path>
+  
+  <!-- Main lightning bolt - right side -->
+  <path d="M1020 60 L1000 100 L1010 100 L990 150 L1020 110 L1010 110 Z" 
+        fill="url(#lightningGradient)" 
+        filter="url(#electricGlow)"
+        opacity="0.7"
+        transform-origin="1005 105">
+    <animateTransform attributeName="transform" type="scale" values="1;1.1;1" dur="0.1s" begin="1s;4s;7s;10s"/>
+  </path>
+  
+  <!-- Electric arcs -->
+  <path d="M250 80 Q280 60 310 85 Q340 110 370 90" 
+        stroke="url(#lightningGradient)" 
+        stroke-width="2" 
+        fill="none" 
+        opacity="0.6"
+        filter="url(#electricGlow)">
+    <animate attributeName="opacity" values="0.6;0.2;0.6" dur="1.5s" repeatCount="indefinite"/>
+  </path>
+  
+  <path d="M830 100 Q860 80 890 105 Q920 130 950 110" 
+        stroke="url(#lightningGradient)" 
+        stroke-width="1.5" 
+        fill="none" 
+        opacity="0.5"
+        filter="url(#electricGlow)">
+    <animate attributeName="opacity" values="0.5;0.8;0.5" dur="2s" repeatCount="indefinite"/>
+  </path>
+  
+  <!-- GO-API Title with electric styling -->
+  <text x="600" y="130" 
+        font-family="'Orbitron', 'Rajdhani', 'Exo 2', monospace" 
+        font-size="84" 
+        font-weight="900" 
+        text-anchor="middle" 
+        fill="#00ADD8" 
+        filter="url(#textGlow)"
+        letter-spacing="8px">
     GO-API
   </text>
   
-  <!-- Subtitle -->
-  <text x="600" y="170" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#ffffff" opacity="0.9">
-    Modern REST API with Clean Architecture
+  <!-- Subtitle with modern styling -->
+  <text x="600" y="175" 
+        font-family="'Inter', 'Roboto', sans-serif" 
+        font-size="18" 
+        font-weight="300" 
+        text-anchor="middle" 
+        fill="#71717a" 
+        letter-spacing="2px">
+    CLEAN ARCHITECTURE MICROSERVICE EXAMPLE
   </text>
   
-  <!-- Tech stack badges -->
-  <rect x="400" y="210" width="60" height="25" rx="12" fill="#00ADD8"/>
-  <text x="430" y="227" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ffffff">Go</text>
-  
-  <rect x="480" y="210" width="70" height="25" rx="12" fill="#FF6B6B"/>
-  <text x="515" y="227" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ffffff">Echo</text>
-  
-  <rect x="570" y="210" width="90" height="25" rx="12" fill="#336791"/>
-  <text x="615" y="227" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ffffff">PostgreSQL</text>
-  
-  <rect x="680" y="210" width="60" height="25" rx="12" fill="#FF9900"/>
-  <text x="710" y="227" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#ffffff">AWS</text>
-  
-  <!-- Code icon -->
-  <g transform="translate(200, 80)">
-    <rect x="0" y="0" width="40" height="30" rx="4" fill="#ffffff" opacity="0.2"/>
-    <rect x="4" y="4" width="32" height="2" fill="#ffffff" opacity="0.8"/>
-    <rect x="4" y="8" width="24" height="2" fill="#ffffff" opacity="0.8"/>
-    <rect x="4" y="12" width="28" height="2" fill="#ffffff" opacity="0.8"/>
-    <rect x="4" y="16" width="20" height="2" fill="#ffffff" opacity="0.8"/>
+  <!-- Enhanced glassmorphism tech badges -->
+  <g transform="translate(270, 215)">
+    <!-- Go badge -->
+    <rect x="0" y="0" width="80" height="38" rx="19" fill="url(#goGlass)" stroke="#00ADD8" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="76" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="72" height="30" rx="15" fill="none" stroke="#00ADD8" stroke-width="0.3" opacity="0.6"/>
+    <text x="40" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#00ADD8">Go</text>
   </g>
   
-  <!-- API icon -->
-  <g transform="translate(960, 80)">
-    <circle cx="20" cy="15" r="15" fill="#ffffff" opacity="0.2"/>
-    <rect x="12" y="11" width="16" height="2" fill="#ffffff" opacity="0.8"/>
-    <rect x="12" y="15" width="16" height="2" fill="#ffffff" opacity="0.8"/>
-    <rect x="12" y="19" width="16" height="2" fill="#ffffff" opacity="0.8"/>
+  <g transform="translate(365, 215)">
+    <!-- Echo badge -->
+    <rect x="0" y="0" width="80" height="38" rx="19" fill="url(#echoGlass)" stroke="#FF6B6B" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="76" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="72" height="30" rx="15" fill="none" stroke="#FF6B6B" stroke-width="0.3" opacity="0.6"/>
+    <text x="40" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#FF6B6B">Echo</text>
   </g>
+  
+  <g transform="translate(460, 215)">
+    <!-- Nginx badge -->
+    <rect x="0" y="0" width="80" height="38" rx="19" fill="url(#nginxGlass)" stroke="#009639" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="76" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="72" height="30" rx="15" fill="none" stroke="#009639" stroke-width="0.3" opacity="0.6"/>
+    <text x="40" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#009639">Nginx</text>
+  </g>
+  
+  <g transform="translate(555, 215)">
+    <!-- PostgreSQL badge -->
+    <rect x="0" y="0" width="105" height="38" rx="19" fill="url(#postgresGlass)" stroke="#336791" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="101" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="97" height="30" rx="15" fill="none" stroke="#336791" stroke-width="0.3" opacity="0.6"/>
+    <text x="52.5" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#336791">PostgreSQL</text>
+  </g>
+  
+  <g transform="translate(675, 215)">
+    <!-- Redis badge -->
+    <rect x="0" y="0" width="80" height="38" rx="19" fill="url(#redisGlass)" stroke="#DC382D" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="76" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="72" height="30" rx="15" fill="none" stroke="#DC382D" stroke-width="0.3" opacity="0.6"/>
+    <text x="40" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#DC382D">Redis</text>
+  </g>
+  
+  <g transform="translate(770, 215)">
+    <!-- AWS badge -->
+    <rect x="0" y="0" width="80" height="38" rx="19" fill="url(#awsGlass)" stroke="#FF9900" stroke-width="1.5" filter="url(#glassEffect)"/>
+    <rect x="2" y="2" width="76" height="34" rx="17" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+    <rect x="4" y="4" width="72" height="30" rx="15" fill="none" stroke="#FF9900" stroke-width="0.3" opacity="0.6"/>
+    <text x="40" y="25" font-family="'Inter', sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#FF9900">AWS</text>
+  </g>
+  
+  <!-- Speed lines for motion effect -->
+  <g opacity="0.3">
+    <rect x="100" y="140" width="80" height="2" fill="url(#lightningGradient)" rx="1">
+      <animate attributeName="width" values="80;120;80" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="1000" y="160" width="100" height="2" fill="url(#lightningGradient)" rx="1">
+      <animate attributeName="width" values="100;140;100" dur="2.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="120" y="180" width="60" height="1" fill="url(#lightningGradient)" rx="0.5">
+      <animate attributeName="width" values="60;90;60" dur="1.8s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  
+  <!-- Geometric accent elements -->
+  <polygon points="50,50 70,30 90,50 70,70" fill="#00ADD8" opacity="0.08" transform="rotate(45 70 50)">
+    <animateTransform attributeName="transform" type="rotate" values="45 70 50;90 70 50;45 70 50" dur="4s" repeatCount="indefinite"/>
+  </polygon>
+  
+  <polygon points="1110,250 1130,230 1150,250 1130,270" fill="#007d9c" opacity="0.08" transform="rotate(-45 1130 250)">
+    <animateTransform attributeName="transform" type="rotate" values="-45 1130 250;0 1130 250;-45 1130 250" dur="5s" repeatCount="indefinite"/>
+  </polygon>
 </svg>
