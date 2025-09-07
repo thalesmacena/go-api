@@ -27,16 +27,17 @@ func NewClient(config *Config) *Client {
 	}
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%d", config.Host, config.Port),
-		Password:     config.Password,
-		DB:           config.Database,
-		MinIdleConns: config.MinIdleConns,
-		MaxIdleConns: config.MaxIdleConns,
-		MaxRetries:   config.MaxRetries,
-		DialTimeout:  config.DialTimeout,
-		ReadTimeout:  config.ReadTimeout,
-		WriteTimeout: config.WriteTimeout,
-		PoolTimeout:  config.PoolTimeout,
+		Addr:           fmt.Sprintf("%s:%d", config.Host, config.Port),
+		Password:       config.Password,
+		DB:             config.Database,
+		MinIdleConns:   config.MinIdleConns,
+		MaxIdleConns:   config.MaxIdleConns,
+		MaxActiveConns: config.MaxActive,
+		MaxRetries:     config.MaxRetries,
+		DialTimeout:    config.DialTimeout,
+		ReadTimeout:    config.ReadTimeout,
+		WriteTimeout:   config.WriteTimeout,
+		PoolTimeout:    config.PoolTimeout,
 	})
 
 	return &Client{

@@ -245,3 +245,26 @@ func (c *Cache) ExtendTTL(ctx context.Context, key string, ttl time.Duration) er
 	fullKey := c.buildCacheKey(key)
 	return c.client.Expire(ctx, fullKey, ttl)
 }
+
+// ClearCacheName removes all keys belonging to the cache name
+func (c *Cache) ClearCacheName(ctx context.Context) error {
+	if c.opts.CacheName == "" {
+		return fmt.Errorf("cache name is not set")
+	}
+
+	// Use the cache name with wildcard to match all keys
+	pattern := c.opts.CacheName + "::*"
+
+	keys, err := c.client.Keys(ctx, pattern)
+	if err != nil {
+		return fmt.Errorf("failed to get keys for cache name %s: %w", c.opts.CacheName, err)
+	}
+
+	if len(keys) > 0 {
+		if err := c.client.Delete(ctx, keys...); err != nil {
+			return fmt.Errorf("failed to delete keys for cache name %s: %w", c.opts.CacheName, err)
+		}
+	}
+
+	return nil
+}

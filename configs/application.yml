@@ -28,6 +28,7 @@ app:
       pool:
         min-idle-conns: ${REDIS_MIN_IDLE_CONNS:5}
         max-idle-conns: ${REDIS_MAX_IDLE_CONNS:10}
+        max-active: ${REDIS_MAX_ACTIVE:100}
       ttl:
         default: 1h
         short-url: 24h

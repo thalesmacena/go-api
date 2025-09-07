@@ -15,10 +15,12 @@ type Config struct {
 	Password string
 	// Database is the Redis database number
 	Database int
-	// MinIdleConns is the minimum number of idle connections
+	// MinIdleConns is the minimum number of idle connections, idle (unused but open) connections
 	MinIdleConns int
-	// MaxIdleConns is the maximum number of idle connections
+	// MaxIdleConns is the maximum number of idle (unused but open) connections to keep in the pool.
 	MaxIdleConns int
+	// MaxActive is the maximum number of active connections that can be established
+	MaxActive int
 	// MaxRetries is the maximum number of retries for failed commands
 	MaxRetries int
 	// DialTimeout is the timeout for establishing connections
@@ -44,6 +46,7 @@ func NewRedisConfig() *Config {
 		Database:        0,
 		MinIdleConns:    5,
 		MaxIdleConns:    10,
+		MaxActive:       100,
 		MaxRetries:      3,
 		DialTimeout:     5 * time.Second,
 		ReadTimeout:     3 * time.Second,
@@ -99,6 +102,15 @@ func (c *Config) WithMaxIdleConns(maxIdleConns int) *Config {
 		panic(fmt.Sprintf("invalid max idle connections: %d, must be non-negative", maxIdleConns))
 	}
 	c.MaxIdleConns = maxIdleConns
+	return c
+}
+
+// WithMaxActive sets the maximum number of active connections
+func (c *Config) WithMaxActive(maxActive int) *Config {
+	if maxActive < 0 {
+		panic(fmt.Sprintf("invalid max active connections: %d, must be non-negative", maxActive))
+	}
+	c.MaxActive = maxActive
 	return c
 }
 
@@ -189,6 +201,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxIdleConns < 0 {
 		return fmt.Errorf("invalid max idle connections: %d, must be non-negative", c.MaxIdleConns)
+	}
+	if c.MaxActive < 0 {
+		return fmt.Errorf("invalid max active connections: %d, must be non-negative", c.MaxActive)
 	}
 	if c.MaxRetries < 0 {
 		return fmt.Errorf("invalid max retries: %d, must be non-negative", c.MaxRetries)

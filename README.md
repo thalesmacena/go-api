@@ -180,6 +180,7 @@ The application uses environment variables and YAML configuration. Key settings:
 | `REDIS_POOL_SIZE` | `10` | Redis connection pool size |
 | `REDIS_MIN_IDLE_CONNS` | `5` | Redis min idle connections |
 | `REDIS_MAX_IDLE_CONNS` | `10` | Redis max idle connections |
+| `REDIS_MAX_ACTIVE` | `100` | Redis max active connections |
 | `AWS_ENDPOINT` | `http://localhost:4566` | AWS endpoint (LocalStack) |
 | `AWS_ACCESS_KEY_ID` | `test` | AWS access key |
 | `AWS_SECRET_ACCESS_KEY` | `test` | AWS secret key |

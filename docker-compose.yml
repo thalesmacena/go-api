@@ -118,6 +118,7 @@ services:
       - REDIS_DB=0
       - REDIS_MIN_IDLE_CONNS=5
       - REDIS_MAX_IDLE_CONNS=10
+      - REDIS_MAX_ACTIVE=100
       
     expose:
       - "8081"
@@ -166,6 +167,7 @@ services:
       - REDIS_DB=0
       - REDIS_MIN_IDLE_CONNS=5
       - REDIS_MAX_IDLE_CONNS=10
+      - REDIS_MAX_ACTIVE=100
    
     expose:
       - "8082"
