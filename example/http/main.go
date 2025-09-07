@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"fmt"
 	"go-api/pkg/http"
 	"go-api/pkg/log"
 	"strings"
@@ -135,18 +136,18 @@ func main() {
 		DefaultHeaders:     map[string]string{"Authorization": "Bearer token"},
 		DefaultContentType: "application/json",
 	}
-	log.Info("=== Starting Default Configuration Examples ===")
+	fmt.Println("=== Starting Default Configuration Examples ===")
 	// Creating a Client
 	client := http.NewHttpClient("https://pokeapi.co/api/v2", clientOptions)
 
 	// Success Request
-	log.Info("=== Example 1: Success Request ===")
+	fmt.Println("=== Example 1: Success Request ===")
 	success, failure, status, err := client.Get("/pokemon/ditto", nil, nil, &PokeResponse{}, nil)
 
 	if err != nil {
-		log.Errorw("Request Error", "status", status, "error", err, "responseBody", failure)
+		fmt.Println("Request Error - status:", status, "error:", err, "responseBody:", failure)
 	} else {
-		log.Infow("Request Success", "status", status, "responseBody", success)
+		fmt.Println("Request Success - status:", status, "responseBody:", success)
 	}
 
 	// Creating other Client
@@ -158,13 +159,13 @@ func main() {
 	}
 
 	// Error Request
-	log.Info("=== Example 2: Error Request ===")
+	fmt.Println("=== Example 2: Error Request ===")
 	success, failure, status, err = client.Get("search", queryParams, nil, nil, &APIErrorResponse{})
 
 	if err != nil {
-		log.Errorw("Request Error", "status", status, "error", err, "responseBody", failure)
+		fmt.Println("Request Error - status:", status, "error:", err, "responseBody:", failure)
 	} else {
-		log.Infow("Request Success", "status", status, "responseBody", success)
+		fmt.Println("Request Success - status:", status, "responseBody:", success)
 	}
 
 	// Creating Client For Post with JSON
@@ -180,17 +181,17 @@ func main() {
 	}
 
 	// Success Request
-	log.Info("=== Example 3: Success Request with reqBody ===")
+	fmt.Println("=== Example 3: Success Request with reqBody ===")
 	success, failure, status, err = client.Post("/posts", nil, nil, reqBody, &CreatePostResponse{}, nil)
 
 	if err != nil {
-		log.Errorw("Request Error", "status", status, "error", err, "responseBody", failure)
+		fmt.Println("Request Error - status:", status, "error:", err, "responseBody:", failure)
 	} else {
-		log.Infow("Request Success", "status", status, "responseBody", success)
+		fmt.Println("Request Success - status:", status, "responseBody:", success)
 	}
 
 	// Using Request Builder
-	log.Info("=== Example 4: Success Request with Request Builder ===")
+	fmt.Println("=== Example 4: Success Request with Request Builder ===")
 	requestSuccessBody, requestErrorBody, requestStatus, requestErr := client.Request().
 		WithMethod(http.POST).
 		WithPath("/posts").
@@ -199,64 +200,64 @@ func main() {
 		Execute()
 
 	if requestErr != nil {
-		log.Errorw("Request Error", "status", requestStatus, "error", requestErr, "responseBody", requestErrorBody)
+		fmt.Println("Request Error - status:", requestStatus, "error:", requestErr, "responseBody:", requestErrorBody)
 	} else {
-		log.Infow("Request Success", "status", requestStatus, "responseBody", requestSuccessBody)
+		fmt.Println("Request Success - status:", requestStatus, "responseBody:", requestSuccessBody)
 	}
 
 	// Example: Public XML API using httpbin
-	log.Info("=== Example 5: XML Success Request ===")
+	fmt.Println("=== Example 5: XML Success Request ===")
 	xmlClient := http.NewHttpClient("https://httpbin.io", http.ClientOptions{DefaultContentType: "application/xml"})
 	var xmlResp HttpbinXML
 	xmlSuccess, xmlFailure, xmlStatus, xmlErr := xmlClient.Get("/xml", nil, nil, &xmlResp, nil)
 	if xmlErr != nil {
-		log.Errorw("XML Request Error", "status", xmlStatus, "error", xmlErr, "responseBody", xmlFailure)
+		fmt.Println("XML Request Error - status:", xmlStatus, "error:", xmlErr, "responseBody:", xmlFailure)
 	} else {
-		log.Infow("XML Request Success", "status", xmlStatus, "responseBody", xmlSuccess)
+		fmt.Println("XML Request Success - status:", xmlStatus, "responseBody:", xmlSuccess)
 	}
 
 	// Example: XML POST to /xml (httpbin returns static XML)
-	log.Info("=== Example 6: XML Success POST Request ===")
+	fmt.Println("=== Example 6: XML Success POST Request ===")
 	xmlPostClient := http.NewHttpClient("https://httpbin.io", http.ClientOptions{DefaultContentType: "application/xml"})
 	xmlReq := XMLAnythingRequest{To: "Alice", From: "Bob", Heading: "Reminder", Body: "Meeting at 10"}
 	var xmlPostResp HttpbinXML
 	xmlPostSuccess, xmlPostFailure, xmlPostStatus, xmlPostErr := xmlPostClient.Post("/xml", nil, nil, xmlReq, &xmlPostResp, nil)
 	if xmlPostErr != nil {
-		log.Errorw("XML POST Error", "status", xmlPostStatus, "error", xmlPostErr, "responseBody", xmlPostFailure)
+		fmt.Println("XML POST Error - status:", xmlPostStatus, "error:", xmlPostErr, "responseBody:", xmlPostFailure)
 	} else {
-		log.Infow("XML POST Success", "status", xmlPostStatus, "responseBody", xmlPostSuccess)
+		fmt.Println("XML POST Success - status:", xmlPostStatus, "responseBody:", xmlPostSuccess)
 	}
 
 	// Example: Public text/plain endpoint (robots.txt) using httpbin
-	log.Info("=== Example 7: Text Response Success Request ===")
+	fmt.Println("=== Example 7: Text Response Success Request ===")
 	textClient := http.NewHttpClient("https://httpbin.io", http.ClientOptions{DefaultContentType: "text/plain"})
 	var textResponse string
 	textSuccess, textFailure, textStatus, textErr := textClient.Get("/robots.txt", nil, nil, &textResponse, nil)
 	if textErr != nil {
-		log.Errorw("Text Request Error", "status", textStatus, "error", textErr, "responseBody", textFailure)
+		fmt.Println("Text Request Error - status:", textStatus, "error:", textErr, "responseBody:", textFailure)
 	} else {
-		log.Infow("Text Request Success", "status", textStatus, "responseBody", textSuccess)
+		fmt.Println("Text Request Success - status:", textStatus, "responseBody:", textSuccess)
 	}
 
 	// Example: Public binary endpoint using httpbin (random bytes)
-	log.Info("=== Example 8: Binary Response Success Request ===")
+	fmt.Println("=== Example 8: Binary Response Success Request ===")
 	binaryClient := http.NewHttpClient("https://httpbin.io", http.ClientOptions{DefaultContentType: "application/octet-stream"})
 	var binaryResponse []byte
 	binarySuccess, binaryFailure, binaryStatus, binaryErr := binaryClient.Get("/bytes/16", nil, nil, &binaryResponse, nil)
 	if binaryErr != nil {
-		log.Errorw("Binary Request Error", "status", binaryStatus, "error", binaryErr, "responseBody", binaryFailure)
+		fmt.Println("Binary Request Error - status:", binaryStatus, "error:", binaryErr, "responseBody:", binaryFailure)
 	} else {
-		log.Infow("Binary Request Success", "status", binaryStatus, "responseBody", binarySuccess)
+		fmt.Println("Binary Request Success - status:", binaryStatus, "responseBody:", binarySuccess)
 	}
 
 	// ===========================================
 	// BACKOFF EXAMPLES
 	// ===========================================
 
-	log.Info("=== Starting Backoff Configuration Examples ===")
+	fmt.Println("=== Starting Backoff Configuration Examples ===")
 
 	// Example 1: HTTP Client with default exponential backoff and logger
-	log.Info("=== Example 1: Client with Default Exponential Backoff and Logger ===")
+	fmt.Println("=== Example 1: Client with Default Exponential Backoff and Logger ===")
 
 	// Create HTTP logger using pkg/log library
 	httpLogger := NewStandardHTTPLogger()
@@ -273,10 +274,10 @@ func main() {
 
 	// This will use the client's default backoff configuration
 	successResp, errorResp, statusCode, err := clientWithDefaultBackoff.Get("/status/500", nil, nil, nil, nil)
-	log.Infow("Backoff Response", "success", successResp, "error", errorResp, "status", statusCode, "err", err)
+	fmt.Println("Backoff Response - success:", successResp, "error:", errorResp, "status:", statusCode, "err:", err)
 
 	// Example 2: HTTP Client without default backoff, but with per-request backoff
-	log.Info("=== Example 2: Per-Request Fixed Backoff Override ===")
+	fmt.Println("=== Example 2: Per-Request Fixed Backoff Override ===")
 	clientWithoutBackoff := http.NewHttpClient("https://httpbin.org", http.ClientOptions{})
 
 	// Use the Request builder to override with fixed backoff
@@ -291,10 +292,10 @@ func main() {
 		}).
 		Execute()
 
-	log.Infow("Per-Request Backoff Response", "success", successResp, "error", errorResp, "status", statusCode, "err", err)
+	fmt.Println("Per-Request Backoff Response - success:", successResp, "error:", errorResp, "status:", statusCode, "err:", err)
 
 	// Example 3: HTTP Client with default backoff, but override per request
-	log.Info("=== Example 3: Override Default Backoff Per Request ===")
+	fmt.Println("=== Example 3: Override Default Backoff Per Request ===")
 
 	// Override the client's default backoff with a different configuration
 	successResp, errorResp, statusCode, err = clientWithDefaultBackoff.Request().
@@ -308,31 +309,31 @@ func main() {
 		}).
 		Execute()
 
-	log.Infow("Override Backoff Response", "success", successResp, "error", errorResp, "status", statusCode, "err", err)
+	fmt.Println("Override Backoff Response - success:", successResp, "error:", errorResp, "status:", statusCode, "err:", err)
 
 	// Example 4: Successful request (should not trigger retries)
-	log.Info("=== Example 5: Successful Request (No Retries Needed) ===")
+	fmt.Println("=== Example 5: Successful Request (No Retries Needed) ===")
 
 	var response map[string]interface{}
 	successResp, errorResp, statusCode, err = clientWithDefaultBackoff.Get("/get", nil, nil, &response, nil)
-	log.Infow("Successful Request Response", "success", successResp != nil, "error", errorResp, "status", statusCode, "err", err)
+	fmt.Println("Successful Request Response - success:", successResp != nil, "error:", errorResp, "status:", statusCode, "err:", err)
 	if response != nil {
-		log.Infow("Response Details", "url", response["url"])
+		fmt.Println("Response Details - url:", response["url"])
 	}
 
 	// Example 6: Demonstrate different logging scenarios
-	log.Info("=== Example 6: Logger Demonstration (Success, Error, and Retry) ===")
+	fmt.Println("=== Example 6: Logger Demonstration (Success, Error, and Retry) ===")
 
 	// Test successful request (no retries needed)
-	log.Infof("--- Testing Successful Request ---")
+	fmt.Println("--- Testing Successful Request ---")
 	successResp, errorResp, statusCode, err = clientWithDefaultBackoff.Get("/get", nil, nil, &response, nil)
 
 	// Test request that will trigger retries
-	log.Infof("--- Testing Request with Retries ---")
+	fmt.Println("--- Testing Request with Retries ---")
 	successResp, errorResp, statusCode, err = clientWithDefaultBackoff.Get("/status/503", nil, nil, nil, nil)
 
 	// Test request with custom headers and body (for logging demonstration)
-	log.Infof("--- Testing POST Request with Body and Headers ---")
+	fmt.Println("--- Testing POST Request with Body and Headers ---")
 	customHeaders := map[string]string{
 		"X-Custom-Header": "test-value",
 		"Authorization":   "Bearer secret-token", // This will be masked in logs
@@ -343,5 +344,5 @@ func main() {
 	}
 	successResp, errorResp, statusCode, err = clientWithDefaultBackoff.Post("/post", nil, customHeaders, postBody, nil, nil)
 
-	log.Info("=== Backoff and Logging Examples Completed ===")
+	fmt.Println("=== Backoff and Logging Examples Completed ===")
 }
