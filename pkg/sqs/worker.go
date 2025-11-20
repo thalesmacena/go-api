@@ -9,21 +9,21 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 // HandlerFunc defines a function that handles a SQS Message
-type HandlerFunc func(msg *sqs.Message) error
+type HandlerFunc func(msg *types.Message) error
 
 // HandleMessage implements the Handler interface for HandlerFunc
-func (f HandlerFunc) HandleMessage(msg *sqs.Message) error {
+func (f HandlerFunc) HandleMessage(msg *types.Message) error {
 	return f(msg)
 }
 
 // Handler defines an interface that processes a SQS Message
 type Handler interface {
-	HandleMessage(msg *sqs.Message) error
+	HandleMessage(msg *types.Message) error
 }
 
 // LogLevel represents the logging level for the Worker
@@ -56,6 +56,14 @@ type WorkerHealthCheck struct {
 	Details map[string]string `json:"details"`
 }
 
+// SQSWorkerClient defines the interface for SQS worker operations
+type SQSWorkerClient interface {
+	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	GetQueueAttributes(ctx context.Context, params *sqs.GetQueueAttributesInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
+}
+
 // WorkerConfig defines the configuration options for a Worker
 type WorkerConfig struct {
 	MaxNumberOfMessages int64
@@ -66,11 +74,11 @@ type WorkerConfig struct {
 
 // Worker polls and processes messages from a SQS queue
 type Worker struct {
-	sqsClient           sqsiface.SQSAPI
+	sqsClient           SQSWorkerClient
 	queueName           string
 	queueURL            string
-	maxNumberOfMessages int64
-	waitTimeSeconds     int64
+	maxNumberOfMessages int32
+	waitTimeSeconds     int32
 	poolSize            int64
 	logLevel            LogLevel
 	handler             Handler
@@ -91,7 +99,7 @@ type Worker struct {
 //   - MaxNumberOfMessages must be between 1 and 10.
 //   - WaitTimeSeconds must be between 1 and 20.
 //   - PoolSize must be greater than 0.
-func NewWorker(sqsClient sqsiface.SQSAPI, queueName string, handler Handler, config *WorkerConfig) (*Worker, error) {
+func NewWorker(sqsClient SQSWorkerClient, queueName string, handler Handler, config *WorkerConfig) (*Worker, error) {
 	var maxMessages int64 = 10
 	var waitTime int64 = 20
 	var poolSize int64 = 1
@@ -120,19 +128,24 @@ func NewWorker(sqsClient sqsiface.SQSAPI, queueName string, handler Handler, con
 		return nil, errors.New("poolSize must be greater than 0")
 	}
 
-	result, err := sqsClient.GetQueueUrl(&sqs.GetQueueUrlInput{
+	ctx := context.Background()
+	result, err := sqsClient.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
 		QueueName: &queueName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to get queue URL: %w", err)
 	}
 
+	if result.QueueUrl == nil {
+		return nil, fmt.Errorf("queue URL is nil for queue %s", queueName)
+	}
+
 	return &Worker{
 		sqsClient:           sqsClient,
 		queueName:           queueName,
 		queueURL:            *result.QueueUrl,
-		maxNumberOfMessages: maxMessages,
-		waitTimeSeconds:     waitTime,
+		maxNumberOfMessages: int32(maxMessages),
+		waitTimeSeconds:     int32(waitTime),
 		poolSize:            poolSize,
 		logLevel:            logLevel,
 		handler:             handler,
@@ -165,10 +178,10 @@ func (w *Worker) pollMessages(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			output, err := w.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
+			output, err := w.sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 				QueueUrl:            &w.queueURL,
-				MaxNumberOfMessages: &w.maxNumberOfMessages,
-				WaitTimeSeconds:     &w.waitTimeSeconds,
+				MaxNumberOfMessages: w.maxNumberOfMessages,
+				WaitTimeSeconds:     w.waitTimeSeconds,
 			})
 			if err != nil {
 				w.logf(ErrorLevel, "failed to receive messages: %v", err)
@@ -176,13 +189,14 @@ func (w *Worker) pollMessages(ctx context.Context) {
 			}
 
 			for _, msg := range output.Messages {
-				go w.handleMessage(msg)
+				msgCopy := msg
+				go w.handleMessage(ctx, &msgCopy)
 			}
 		}
 	}
 }
 
-func (w *Worker) handleMessage(msg *sqs.Message) {
+func (w *Worker) handleMessage(ctx context.Context, msg *types.Message) {
 	if msg == nil {
 		return
 	}
@@ -193,7 +207,7 @@ func (w *Worker) handleMessage(msg *sqs.Message) {
 		return
 	}
 
-	_, err = w.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
+	_, err = w.sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      &w.queueURL,
 		ReceiptHandle: msg.ReceiptHandle,
 	})
@@ -217,7 +231,7 @@ func (w *Worker) logf(level LogLevel, format string, v ...interface{}) {
 	}
 }
 
-func safeMessageID(msg *sqs.Message) string {
+func safeMessageID(msg *types.Message) string {
 	if msg == nil || msg.MessageId == nil {
 		return ""
 	}
@@ -260,8 +274,8 @@ func (w *Worker) HealthCheck() WorkerHealthCheck {
 		"queue_name":             w.queueName,
 		"queue_url":              w.queueURL,
 		"pool_size":              strconv.FormatInt(w.poolSize, 10),
-		"max_number_of_messages": strconv.FormatInt(w.maxNumberOfMessages, 10),
-		"wait_time_seconds":      strconv.FormatInt(w.waitTimeSeconds, 10),
+		"max_number_of_messages": strconv.FormatInt(int64(w.maxNumberOfMessages), 10),
+		"wait_time_seconds":      strconv.FormatInt(int64(w.waitTimeSeconds), 10),
 		"log_level":              w.getLogLevelString(),
 		"is_running":             strconv.FormatBool(isRunning),
 		"messages_processed":     strconv.FormatInt(messagesProcessed, 10),
@@ -276,10 +290,11 @@ func (w *Worker) HealthCheck() WorkerHealthCheck {
 
 // testQueueConnectivity tests if the queue is accessible
 func (w *Worker) testQueueConnectivity() bool {
-	_, err := w.sqsClient.GetQueueAttributes(&sqs.GetQueueAttributesInput{
+	ctx := context.Background()
+	_, err := w.sqsClient.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
 		QueueUrl: &w.queueURL,
-		AttributeNames: []*string{
-			&[]string{"ApproximateNumberOfMessages"}[0],
+		AttributeNames: []types.QueueAttributeName{
+			types.QueueAttributeNameApproximateNumberOfMessages,
 		},
 	})
 	return err == nil

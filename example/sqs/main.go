@@ -2,28 +2,41 @@ package main
 
 import (
 	"context"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sqs"
 	"go-api/pkg/log"
 	sqslib "go-api/pkg/sqs"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 func main() {
-	// Create a session
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("us-west-2"),
-	}))
+	ctx := context.Background()
+
+	// Load AWS configuration
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-west-2"),
+	)
+	if err != nil {
+		log.Fatalf("Failed to load AWS config: %v", err)
+	}
 
 	// create SQS Client
-	sqsClient := sqs.New(sess)
+	sqsClient := sqs.NewFromConfig(cfg)
 
 	// Set Queue Name
-	queueName := "teste1-oregon"
+	queueName := "test-queue"
 
-	handler := sqslib.HandlerFunc(func(msg *sqs.Message) error {
-		log.Infof("Received Message ID: %s, Value: %s", aws.StringValue(msg.MessageId), aws.StringValue(msg.Body))
+	handler := sqslib.HandlerFunc(func(msg *types.Message) error {
+		var messageID, body string
+		if msg.MessageId != nil {
+			messageID = *msg.MessageId
+		}
+		if msg.Body != nil {
+			body = *msg.Body
+		}
+		log.Infof("Received Message ID: %s, Value: %s", messageID, body)
 
 		// Process Logic
 
@@ -31,7 +44,7 @@ func main() {
 	})
 
 	// Optional Configs
-	config := &sqslib.WorkerConfig{
+	workerConfig := &sqslib.WorkerConfig{
 		MaxNumberOfMessages: 10,
 		WaitTimeSeconds:     20,
 		PoolSize:            5,
@@ -39,7 +52,7 @@ func main() {
 	}
 
 	// Create Worker
-	worker, err := sqslib.NewWorker(sqsClient, queueName, handler, config)
+	worker, err := sqslib.NewWorker(sqsClient, queueName, handler, workerConfig)
 	if err != nil {
 		log.Fatalf("Failed to create worker: %v", err)
 	}

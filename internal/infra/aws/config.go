@@ -1,43 +1,45 @@
 package aws
 
 import (
+	"context"
 	"go-api/pkg/resource"
 	"log"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
-var Session *session.Session
+var Config aws.Config
 
 func init() {
-	config := &aws.Config{
-		Region: aws.String(resource.GetString("app.cloud.aws-region")),
-	}
+	ctx := context.Background()
 
-	// Check if LocalStack endpoint is configured
-	if endpoint := resource.GetString("app.cloud.aws-endpoint"); endpoint != "" {
-		config.Endpoint = aws.String(endpoint)
-		config.DisableSSL = aws.Bool(!resource.GetBool("app.cloud.aws-use-ssl"))
-		config.S3ForcePathStyle = aws.Bool(true) // Required for LocalStack
+	// Load default config
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(resource.GetString("app.cloud.aws-region")),
+	)
+
+	if err != nil {
+		log.Fatalf("Failed to load AWS config: %v", err)
 	}
 
 	// Check if custom credentials are provided
 	if accessKey := resource.GetString("app.cloud.aws-access-key-id"); accessKey != "" {
 		secretKey := resource.GetString("app.cloud.aws-secret-access-key")
 		if secretKey != "" {
-			config.Credentials = credentials.NewStaticCredentials(accessKey, secretKey, "")
+			cfg.Credentials = credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")
 		}
 	}
 	// If no custom credentials are provided, AWS SDK will use default credential chain
 	// (environment variables, IAM roles, etc.)
 
-	sess, err := session.NewSession(config)
-
-	if err != nil {
-		log.Fatalf("Failed to create AWS session: %v", err)
+	// Check if LocalStack endpoint is configured
+	if endpoint := resource.GetString("app.cloud.aws-endpoint"); endpoint != "" {
+		cfg.BaseEndpoint = &endpoint
+		// For LocalStack, we need to customize the endpoint resolver
+		// The DisableHTTPS option is handled via the endpoint URL scheme (http:// vs https://)
 	}
 
-	Session = sess
+	Config = cfg
 }

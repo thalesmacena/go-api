@@ -1,13 +1,13 @@
 package sqs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 // BatchMessage represents a message to be sent in batch
@@ -22,13 +22,20 @@ type BatchResult struct {
 	Failed     []string `json:"failed"`
 }
 
+// SQSClient defines the interface for SQS operations
+type SQSClient interface {
+	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
+	SendMessage(ctx context.Context, params *sqs.SendMessageInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageOutput, error)
+	SendMessageBatch(ctx context.Context, params *sqs.SendMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageBatchOutput, error)
+}
+
 // Sender handles sending messages to SQS queues
 type Sender struct {
-	sqsClient sqsiface.SQSAPI
+	sqsClient SQSClient
 }
 
 // NewSender creates and returns a new Sender
-func NewSender(sqsClient sqsiface.SQSAPI) *Sender {
+func NewSender(sqsClient SQSClient) *Sender {
 	return &Sender{
 		sqsClient: sqsClient,
 	}
@@ -36,8 +43,10 @@ func NewSender(sqsClient sqsiface.SQSAPI) *Sender {
 
 // SendMessage serializes the provided body to JSON and sends it to the specified queue
 func (s *Sender) SendMessage(queueName string, body any) error {
+	ctx := context.Background()
+
 	// Get queue URL
-	queueURL, err := s.getQueueURL(queueName)
+	queueURL, err := s.getQueueURL(ctx, queueName)
 	if err != nil {
 		return fmt.Errorf("failed to get queue URL for %s: %w", queueName, err)
 	}
@@ -49,9 +58,10 @@ func (s *Sender) SendMessage(queueName string, body any) error {
 	}
 
 	// Send message
-	_, err = s.sqsClient.SendMessage(&sqs.SendMessageInput{
-		QueueUrl:    aws.String(queueURL),
-		MessageBody: aws.String(string(jsonBody)),
+	messageBody := string(jsonBody)
+	_, err = s.sqsClient.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    &queueURL,
+		MessageBody: &messageBody,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to send message to queue %s: %w", queueName, err)
@@ -70,8 +80,10 @@ func (s *Sender) SendMessageBatch(queueName string, messages []BatchMessage) (*B
 		}, nil
 	}
 
+	ctx := context.Background()
+
 	// Get queue URL
-	queueURL, err := s.getQueueURL(queueName)
+	queueURL, err := s.getQueueURL(ctx, queueName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get queue URL for %s: %w", queueName, err)
 	}
@@ -97,7 +109,7 @@ func (s *Sender) SendMessageBatch(queueName string, messages []BatchMessage) (*B
 		go func(batchMessages []BatchMessage) {
 			defer wg.Done()
 
-			batchResult, err := s.sendBatch(queueURL, batchMessages)
+			batchResult, err := s.sendBatch(ctx, queueURL, batchMessages)
 			if err != nil {
 				// If the entire batch fails, mark all messages as failed
 				failedResult := &BatchResult{
@@ -134,12 +146,12 @@ func (s *Sender) SendMessageBatch(queueName string, messages []BatchMessage) (*B
 }
 
 // sendBatch sends a single batch of up to 10 messages
-func (s *Sender) sendBatch(queueURL string, messages []BatchMessage) (*BatchResult, error) {
+func (s *Sender) sendBatch(ctx context.Context, queueURL string, messages []BatchMessage) (*BatchResult, error) {
 	if len(messages) > 10 {
 		return nil, fmt.Errorf("batch size cannot exceed 10 messages, got %d", len(messages))
 	}
 
-	entries := make([]*sqs.SendMessageBatchRequestEntry, 0, len(messages))
+	entries := make([]types.SendMessageBatchRequestEntry, 0, len(messages))
 	serializationFailed := make([]string, 0)
 
 	// Prepare batch entries
@@ -152,9 +164,10 @@ func (s *Sender) sendBatch(queueURL string, messages []BatchMessage) (*BatchResu
 			continue
 		}
 
-		entries = append(entries, &sqs.SendMessageBatchRequestEntry{
-			Id:          aws.String(msg.MessageID),
-			MessageBody: aws.String(string(jsonBody)),
+		messageBody := string(jsonBody)
+		entries = append(entries, types.SendMessageBatchRequestEntry{
+			Id:          &msg.MessageID,
+			MessageBody: &messageBody,
 		})
 	}
 
@@ -169,8 +182,8 @@ func (s *Sender) sendBatch(queueURL string, messages []BatchMessage) (*BatchResu
 	}
 
 	// Send batch
-	output, err := s.sqsClient.SendMessageBatch(&sqs.SendMessageBatchInput{
-		QueueUrl: aws.String(queueURL),
+	output, err := s.sqsClient.SendMessageBatch(ctx, &sqs.SendMessageBatchInput{
+		QueueUrl: &queueURL,
 		Entries:  entries,
 	})
 	if err != nil {
@@ -195,14 +208,17 @@ func (s *Sender) sendBatch(queueURL string, messages []BatchMessage) (*BatchResu
 }
 
 // getQueueURL retrieves the URL for the specified queue name
-func (s *Sender) getQueueURL(queueName string) (string, error) {
-	result, err := s.sqsClient.GetQueueUrl(&sqs.GetQueueUrlInput{
-		QueueName: aws.String(queueName),
+func (s *Sender) getQueueURL(ctx context.Context, queueName string) (string, error) {
+	result, err := s.sqsClient.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
+		QueueName: &queueName,
 	})
 	if err != nil {
 		return "", err
 	}
-	return aws.StringValue(result.QueueUrl), nil
+	if result.QueueUrl == nil {
+		return "", fmt.Errorf("queue URL is nil for queue %s", queueName)
+	}
+	return *result.QueueUrl, nil
 }
 
 // extractMessageIDs extracts message IDs from a slice of BatchMessage
