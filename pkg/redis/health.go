@@ -12,8 +12,9 @@ import (
 
 // RedisHealthCheck represents the health check response for Redis
 type RedisHealthCheck struct {
-	Status  HealthStatus      `json:"status"`
-	Details map[string]string `json:"details"`
+	Status     HealthStatus      `json:"status"`
+	Details    map[string]string `json:"details"`
+	LockStatus map[string]bool   `json:"lock_status,omitempty"`
 }
 
 // HealthChecker provides Redis health checking functionality
@@ -86,9 +87,13 @@ func (h *HealthChecker) HealthCheck() RedisHealthCheck {
 		"last_error":            h.lastError,
 	}
 
+	// Get lock status without affecting health status
+	lockStatus := GetLockStatus()
+
 	return RedisHealthCheck{
-		Status:  status,
-		Details: details,
+		Status:     status,
+		Details:    details,
+		LockStatus: lockStatus,
 	}
 }
 

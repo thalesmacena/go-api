@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -36,20 +37,29 @@ type CustomHandler struct {
 
 func (h *CustomHandler) HandleMessage(ctx context.Context, channel string, message string) error {
 	h.counter.Increment()
-	fmt.Printf("[%s] Received message on channel '%s': %s (total: %d)\n",
+	fmt.Printf("[%s] Received message on channel '%s': %s (total: %d)",
 		h.name, channel, message, h.counter.GetCount())
 	return nil
 }
 
 func main() {
+	// Get Redis configuration from environment variables
+	redisHost := getEnvOrDefault("REDIS_HOST", "localhost")
+	redisPort := getEnvOrDefaultInt("REDIS_PORT", 6379)
+	redisPassword := getEnvOrDefault("REDIS_PASSWORD", "redis_password")
+
+	fmt.Printf("Using Redis configuration: Host=%s, Port=%d, Password=%s",
+		redisHost, redisPort, maskPassword(redisPassword))
+
 	// Create Redis configuration using fluent API
 	config := redis.NewRedisConfig().
-		WithHost("localhost").
-		WithPort(6379).
-		WithPassword("").
+		WithHost(redisHost).
+		WithPort(redisPort).
+		WithPassword(redisPassword).
 		WithDatabase(0).
 		WithMinIdleConns(5).
 		WithMaxIdleConns(10).
+		WithMaxActive(100).
 		WithDialTimeout(5 * time.Second).
 		WithReadTimeout(3 * time.Second).
 		WithWriteTimeout(3 * time.Second).
@@ -57,268 +67,427 @@ func main() {
 
 	// Create Redis client
 	client := redis.NewClient(config)
-	defer client.Close()
+	defer func(client *redis.Client) {
+		err := client.Close()
+		if err != nil {
+			fmt.Printf("Error closing Redis client: %v", err)
+		}
+	}(client)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
-	fmt.Println("Testing Redis Pub/Sub functionality...")
+	fmt.Println("Example Redis Pub/Sub Scenarios...")
 
-	// Create pub/sub configuration using builder
-	pubsubConfig := redis.NewPubSubConfig().
+	// Example Scenario: Basic publisher and subscriber
+	fmt.Println("=== Scenario: Basic Publisher and Subscriber ===")
+	exampleScenarioBasicPubSub(ctx, client)
+	time.Sleep(200 * time.Millisecond) // Wait between scenarios
+
+	// Example Scenario: JSON message publishing
+	fmt.Println("=== Scenario: JSON Message Publishing ===")
+	exampleScenarioJSONMessages(ctx, client)
+	time.Sleep(200 * time.Millisecond) // Wait between scenarios
+
+	// Example Scenario: Pattern subscription
+	fmt.Println("=== Scenario: Pattern Subscription ===")
+	exampleScenarioPatternSubscription(ctx, client)
+	time.Sleep(200 * time.Millisecond) // Wait between scenarios
+
+	// Example Scenario: Error handling
+	fmt.Println("=== Scenario: Error Handling ===")
+	exampleScenarioErrorHandling(ctx, client)
+	time.Sleep(200 * time.Millisecond) // Wait between scenarios
+
+	// Example Scenario: Health check
+	fmt.Println("=== Scenario: Health Check and Monitoring ===")
+	exampleScenarioHealthCheck(ctx, client)
+
+	fmt.Println("All pub/sub scenarios completed successfully!")
+}
+
+// exampleScenarioBasicPubSub demonstrates basic publish and subscribe functionality
+func exampleScenarioBasicPubSub(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing basic publisher and subscriber with namespace...")
+
+	counter := &MessageCounter{}
+	handler := &CustomHandler{counter: counter, name: "BasicHandler"}
+
+	// Create pub/sub configuration with namespace
+	config := redis.NewPubSubConfig().
 		WithPoolSize(2).
 		WithLogLevel(redis.InfoLevel).
 		WithReconnectDelay(1 * time.Second).
 		WithMaxReconnectAttempts(5).
 		WithChannelNamespace("user_service")
 
-	// Test 1: Basic publisher and subscriber
-	fmt.Println("\n1. Testing basic publisher and subscriber...")
-
-	counter1 := &MessageCounter{}
-	handler1 := &CustomHandler{counter: counter1, name: "Handler1"}
-
-	pubSubConfig := pubsubConfig
-
-	subscriber1, err := redis.NewSubscriber(client.GetClient(), handler1, pubSubConfig)
+	subscriber, err := redis.NewSubscriber(client.GetClient(), handler, config)
 	if err != nil {
-		log.Fatalf("Failed to create subscriber1: %v", err)
+		fmt.Printf("Failed to create subscriber: %v", err)
+		return
 	}
-	publisher1 := redis.NewPublisher(client.GetClient(), pubSubConfig)
+	defer subscriber.Close()
+
+	publisher := redis.NewPublisher(client.GetClient(), config)
 
 	// Subscribe to channels
-	err = subscriber1.Subscribe(ctx, "test_channel", "another_channel")
+	err = subscriber.Subscribe(ctx, "test_channel", "another_channel")
 	if err != nil {
-		log.Fatalf("Failed to subscribe: %v", err)
+		fmt.Printf("Failed to subscribe: %v", err)
+		return
 	}
-	fmt.Println("✓ Subscribed to channels")
-	fmt.Println("  - Channel format: user_service::test_channel, user_service::another_channel")
+	fmt.Println("Subscribed to channels: test_channel, another_channel")
+	fmt.Println("  - Actual channels: user_service::test_channel, user_service::another_channel")
 
 	// Start subscriber in background
-	go subscriber1.Start(ctx)
+	go subscriber.Start(ctx)
 
 	// Wait for subscription to be ready
 	time.Sleep(100 * time.Millisecond)
 
 	// Publish messages
-	err = publisher1.Publish(ctx, "test_channel", "Hello from test_channel!")
+	err = publisher.Publish(ctx, "test_channel", "Hello from test_channel!")
 	if err != nil {
-		log.Fatalf("Failed to publish: %v", err)
+		fmt.Printf("Failed to publish: %v", err)
+		return
 	}
-	fmt.Println("✓ Published message to test_channel")
+	fmt.Println("Published message to test_channel")
 
-	err = publisher1.Publish(ctx, "another_channel", "Hello from another_channel!")
+	err = publisher.Publish(ctx, "another_channel", "Hello from another_channel!")
 	if err != nil {
-		log.Fatalf("Failed to publish: %v", err)
+		fmt.Printf("Failed to publish: %v", err)
+		return
 	}
-	fmt.Println("✓ Published message to another_channel")
+	fmt.Println("Published message to another_channel")
 
 	// Wait for messages to be processed
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
-	// Test 2: JSON message publishing
-	fmt.Println("\n2. Testing JSON message publishing...")
+	fmt.Printf("Results: %d messages received", counter.GetCount())
+}
 
+// exampleScenarioJSONMessages demonstrates JSON message publishing and receiving
+func exampleScenarioJSONMessages(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing JSON message serialization and publishing...")
+
+	counter := &MessageCounter{}
+	handler := &CustomHandler{counter: counter, name: "JSONHandler"}
+
+	config := redis.NewPubSubConfig().
+		WithPoolSize(1).
+		WithLogLevel(redis.InfoLevel)
+
+	subscriber, err := redis.NewSubscriber(client.GetClient(), handler, config)
+	if err != nil {
+		fmt.Printf("Failed to create subscriber: %v", err)
+		return
+	}
+	defer subscriber.Close()
+
+	publisher := redis.NewPublisher(client.GetClient(), config)
+
+	// Subscribe to channel
+	err = subscriber.Subscribe(ctx, "json_channel")
+	if err != nil {
+		fmt.Printf("Failed to subscribe: %v", err)
+		return
+	}
+	fmt.Println("Subscribed to json_channel")
+
+	// Start subscriber
+	go subscriber.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+
+	// Define message structure
 	type Message struct {
 		ID      int       `json:"id"`
 		Content string    `json:"content"`
 		Time    time.Time `json:"time"`
 	}
 
-	jsonMessage := Message{
-		ID:      1,
-		Content: "This is a JSON message",
-		Time:    time.Now(),
+	// Publish JSON messages
+	for i := 1; i <= 3; i++ {
+		jsonMessage := Message{
+			ID:      i,
+			Content: fmt.Sprintf("JSON message number %d", i),
+			Time:    time.Now(),
+		}
+
+		err = publisher.PublishJSON(ctx, "json_channel", jsonMessage)
+		if err != nil {
+			fmt.Printf("Failed to publish JSON message %d: %v", i, err)
+			continue
+		}
+		fmt.Printf("Published JSON message %d", i)
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	err = publisher1.PublishJSON(ctx, "test_channel", jsonMessage)
+	// Wait for messages to be processed
+	time.Sleep(500 * time.Millisecond)
+
+	fmt.Printf("Results: %d JSON messages received", counter.GetCount())
+}
+
+// exampleScenarioPatternSubscription demonstrates pattern-based subscription
+func exampleScenarioPatternSubscription(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing pattern-based subscription (user:*, event:*)...")
+
+	counter := &MessageCounter{}
+	handler := &CustomHandler{counter: counter, name: "PatternHandler"}
+
+	config := redis.NewPubSubConfig().
+		WithPoolSize(2).
+		WithLogLevel(redis.InfoLevel)
+
+	subscriber, err := redis.NewSubscriber(client.GetClient(), handler, config)
 	if err != nil {
-		log.Fatalf("Failed to publish JSON: %v", err)
+		fmt.Printf("Failed to create subscriber: %v", err)
+		return
 	}
-	fmt.Println("✓ Published JSON message")
+	defer subscriber.Close()
 
-	// Wait for JSON message to be processed
-	time.Sleep(200 * time.Millisecond)
-
-	// Test 3: Pattern subscription
-	fmt.Println("\n3. Testing pattern subscription...")
-
-	counter2 := &MessageCounter{}
-	handler2 := &CustomHandler{counter: counter2, name: "PatternHandler"}
-
-	subscriber2, err := redis.NewSubscriber(client.GetClient(), handler2, pubSubConfig)
-	if err != nil {
-		log.Fatalf("Failed to create subscriber2: %v", err)
-	}
+	publisher := redis.NewPublisher(client.GetClient(), config)
 
 	// Subscribe to patterns
-	err = subscriber2.PSubscribe(ctx, "user:*", "event:*")
+	err = subscriber.PSubscribe(ctx, "user:*", "event:*")
 	if err != nil {
-		log.Fatalf("Failed to subscribe to patterns: %v", err)
+		fmt.Printf("Failed to subscribe to patterns: %v", err)
+		return
 	}
-	fmt.Println("✓ Subscribed to patterns")
+	fmt.Println("Subscribed to patterns: user:*, event:*")
 
-	// Start pattern subscriber in background
-	go subscriber2.Start(ctx)
-
-	// Wait for subscription to be ready
+	// Start subscriber
+	go subscriber.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
 
 	// Publish messages matching patterns
-	err = publisher1.Publish(ctx, "user:123", "User 123 message")
-	if err != nil {
-		log.Fatalf("Failed to publish to user:123: %v", err)
-	}
-	fmt.Println("✓ Published message to user:123")
-
-	err = publisher1.Publish(ctx, "event:login", "User logged in")
-	if err != nil {
-		log.Fatalf("Failed to publish to event:login: %v", err)
-	}
-	fmt.Println("✓ Published message to event:login")
-
-	err = publisher1.Publish(ctx, "other:message", "This should not match")
-	if err != nil {
-		log.Fatalf("Failed to publish to other:message: %v", err)
-	}
-	fmt.Println("✓ Published message to other:message (should not match pattern)")
-
-	// Wait for pattern messages to be processed
-	time.Sleep(200 * time.Millisecond)
-
-	// Test 4: Health check
-	fmt.Println("\n4. Testing pub/sub health check...")
-
-	healthCheck1 := subscriber1.HealthCheck()
-	fmt.Printf("✓ Subscriber1 health: %s\n", healthCheck1.Status)
-	fmt.Printf("✓ Subscriber1 details: %+v\n", healthCheck1.Details)
-
-	healthCheck2 := subscriber2.HealthCheck()
-	fmt.Printf("✓ Subscriber2 health: %s\n", healthCheck2.Status)
-	fmt.Printf("✓ Subscriber2 details: %+v\n", healthCheck2.Details)
-
-	// Test 5: High-frequency message publishing
-	fmt.Println("\n5. Testing high-frequency message publishing...")
-
-	counter3 := &MessageCounter{}
-	handler3 := &CustomHandler{counter: counter3, name: "HighFreqHandler"}
-
-	highFreqConfig := redis.NewPubSubConfig().
-		WithPoolSize(3).
-		WithLogLevel(redis.ErrorLevel). // Reduce logging for high frequency
-		WithReconnectDelay(500 * time.Millisecond).
-		WithMaxReconnectAttempts(3)
-
-	subscriber3, err := redis.NewSubscriber(client.GetClient(), handler3, highFreqConfig)
-	if err != nil {
-		log.Fatalf("Failed to create subscriber3: %v", err)
+	testMessages := []struct {
+		channel string
+		message string
+		matches bool
+	}{
+		{"user:123", "User 123 logged in", true},
+		{"user:456", "User 456 updated profile", true},
+		{"event:login", "Login event triggered", true},
+		{"event:logout", "Logout event triggered", true},
+		{"other:message", "This should not match", false},
 	}
 
-	err = subscriber3.Subscribe(ctx, "high_freq_channel")
-	if err != nil {
-		log.Fatalf("Failed to subscribe subscriber3: %v", err)
-	}
-
-	go subscriber3.Start(ctx)
-
-	// Wait for subscription to be ready
-	time.Sleep(100 * time.Millisecond)
-
-	// Publish many messages quickly
-	for i := 0; i < 10; i++ {
-		err = publisher1.Publish(ctx, "high_freq_channel", fmt.Sprintf("High frequency message %d", i+1))
+	for _, test := range testMessages {
+		err = publisher.Publish(ctx, test.channel, test.message)
 		if err != nil {
-			log.Printf("Failed to publish high freq message %d: %v", i+1, err)
+			fmt.Printf("Failed to publish to %s: %v", test.channel, err)
+			continue
 		}
-	}
-	fmt.Println("✓ Published 10 high-frequency messages")
 
-	// Wait for high-frequency messages to be processed
+		if test.matches {
+			fmt.Printf("Published to %s (matches pattern)", test.channel)
+		} else {
+			fmt.Printf("Published to %s (should not match pattern)", test.channel)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for messages to be processed
 	time.Sleep(500 * time.Millisecond)
 
-	// Test 6: Error handling
-	fmt.Println("\n6. Testing error handling...")
+	fmt.Printf("Results: %d messages received (expected: 4, non-matching: 1)", counter.GetCount())
+}
 
-	counter4 := &MessageCounter{}
-	errorHandler := &CustomHandler{counter: counter4, name: "ErrorHandler"}
+// exampleScenarioErrorHandling demonstrates error handling in message handlers
+func exampleScenarioErrorHandling(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing error handling in message handlers...")
 
-	// Create a handler that returns an error for testing
-	errorHandlerFunc := redis.HandlerFunc(func(ctx context.Context, channel string, message string) error {
-		if message == "error_message" {
-			return fmt.Errorf("intentional error for testing")
+	counter := &MessageCounter{}
+	errorCounter := 0
+	var mu sync.Mutex
+
+	// Create a handler that returns an error for specific messages
+	errorHandler := redis.HandlerFunc(func(ctx context.Context, channel string, message string) error {
+		if message == "error_trigger" {
+			mu.Lock()
+			errorCounter++
+			mu.Unlock()
+			return fmt.Errorf("intentional error for message: %s", message)
 		}
-		errorHandler.HandleMessage(ctx, channel, message)
+
+		counter.Increment()
+		fmt.Printf("[ErrorTestHandler] Received: %s", message)
 		return nil
 	})
 
-	errorSubscriber, err := redis.NewSubscriber(client.GetClient(), errorHandlerFunc, pubSubConfig)
+	config := redis.NewPubSubConfig().
+		WithPoolSize(1)
+
+	subscriber, err := redis.NewSubscriber(client.GetClient(), errorHandler, config)
 	if err != nil {
-		log.Fatalf("Failed to create error subscriber: %v", err)
+		fmt.Printf("Failed to create subscriber: %v", err)
+		return
 	}
+	defer subscriber.Close()
 
-	err = errorSubscriber.Subscribe(ctx, "error_test_channel")
+	publisher := redis.NewPublisher(client.GetClient(), config)
+
+	// Subscribe to channel
+	err = subscriber.Subscribe(ctx, "error_test_channel")
 	if err != nil {
-		log.Fatalf("Failed to subscribe error subscriber: %v", err)
+		fmt.Printf("Failed to subscribe: %v", err)
+		return
 	}
+	fmt.Println("Subscribed to error_test_channel")
 
-	go errorSubscriber.Start(ctx)
-
-	// Wait for subscription to be ready
+	// Start subscriber
+	go subscriber.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
 
-	// Publish normal message
-	err = publisher1.Publish(ctx, "error_test_channel", "normal_message")
-	if err != nil {
-		log.Fatalf("Failed to publish normal message: %v", err)
-	}
-	fmt.Println("✓ Published normal message (should be processed)")
-
-	// Publish error message
-	err = publisher1.Publish(ctx, "error_test_channel", "error_message")
-	if err != nil {
-		log.Fatalf("Failed to publish error message: %v", err)
-	}
-	fmt.Println("✓ Published error message (should cause error)")
-
-	// Wait for error messages to be processed
-	time.Sleep(200 * time.Millisecond)
-
-	// Print final statistics
-	fmt.Println("\n7. Final statistics:")
-	fmt.Printf("✓ Handler1 received %d messages\n", counter1.GetCount())
-	fmt.Printf("✓ PatternHandler received %d messages\n", counter2.GetCount())
-	fmt.Printf("✓ HighFreqHandler received %d messages\n", counter3.GetCount())
-	fmt.Printf("✓ ErrorHandler received %d messages\n", counter4.GetCount())
-
-	// Close subscribers
-	fmt.Println("\n8. Closing subscribers...")
-	err = subscriber1.Close()
-	if err != nil {
-		log.Printf("Failed to close subscriber1: %v", err)
-	} else {
-		fmt.Println("✓ Closed subscriber1")
+	// Publish test messages
+	messages := []struct {
+		content     string
+		shouldError bool
+	}{
+		{"normal_message_1", false},
+		{"normal_message_2", false},
+		{"error_trigger", true},
+		{"normal_message_3", false},
+		{"error_trigger", true},
+		{"normal_message_4", false},
 	}
 
-	err = subscriber2.Close()
-	if err != nil {
-		log.Printf("Failed to close subscriber2: %v", err)
-	} else {
-		fmt.Println("✓ Closed subscriber2")
+	for i, msg := range messages {
+		err = publisher.Publish(ctx, "error_test_channel", msg.content)
+		if err != nil {
+			fmt.Printf("Failed to publish message %d: %v", i+1, err)
+			continue
+		}
+
+		if msg.shouldError {
+			fmt.Printf("Published error-triggering message %d", i+1)
+		} else {
+			fmt.Printf("Published normal message %d", i+1)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	err = subscriber3.Close()
+	// Wait for messages to be processed
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	errors := errorCounter
+	mu.Unlock()
+
+	fmt.Printf("=== RESULTS ===")
+	fmt.Printf("Total messages: %d", len(messages))
+	fmt.Printf("Successful: %d", counter.GetCount())
+	fmt.Printf("Errors handled: %d", errors)
+}
+
+// exampleScenarioHealthCheck demonstrates health check and monitoring
+func exampleScenarioHealthCheck(ctx context.Context, client *redis.Client) {
+	fmt.Println("Demonstrating health check and subscriber monitoring...")
+
+	counter := &MessageCounter{}
+	handler := &CustomHandler{counter: counter, name: "HealthCheckHandler"}
+
+	config := redis.NewPubSubConfig().
+		WithPoolSize(3).
+		WithLogLevel(redis.InfoLevel).
+		WithReconnectDelay(1 * time.Second).
+		WithMaxReconnectAttempts(5).
+		WithChannelNamespace("monitoring")
+
+	subscriber, err := redis.NewSubscriber(client.GetClient(), handler, config)
 	if err != nil {
-		log.Printf("Failed to close subscriber3: %v", err)
-	} else {
-		fmt.Println("✓ Closed subscriber3")
+		fmt.Printf("Failed to create subscriber: %v", err)
+		return
+	}
+	defer subscriber.Close()
+
+	publisher := redis.NewPublisher(client.GetClient(), config)
+
+	// Subscribe to channels
+	err = subscriber.Subscribe(ctx, "health_channel_1", "health_channel_2")
+	if err != nil {
+		fmt.Printf("Failed to subscribe: %v", err)
+		return
+	}
+	fmt.Println("Subscribed to health channels")
+
+	// Start subscriber
+	go subscriber.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+
+	// Check health before publishing
+	fmt.Println("--- Health Check: Before Publishing ---")
+	showHealthCheck(subscriber)
+
+	// Publish some messages
+	for i := 1; i <= 5; i++ {
+		channel := "health_channel_1"
+		if i%2 == 0 {
+			channel = "health_channel_2"
+		}
+
+		err = publisher.Publish(ctx, channel, fmt.Sprintf("Health check message %d", i))
+		if err != nil {
+			fmt.Printf("Failed to publish message %d: %v", i, err)
+			continue
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	err = errorSubscriber.Close()
-	if err != nil {
-		log.Printf("Failed to close error subscriber: %v", err)
-	} else {
-		fmt.Println("✓ Closed error subscriber")
-	}
+	// Wait for messages to be processed
+	time.Sleep(500 * time.Millisecond)
 
-	fmt.Println("\n✓ All pub/sub tests completed successfully!")
+	// Check health after publishing
+	fmt.Println("--- Health Check: After Publishing ---")
+	showHealthCheck(subscriber)
+
+	fmt.Printf("Total messages received: %d", counter.GetCount())
+
+	// Close subscriber and show final health check
+	fmt.Println("--- Closing Subscriber ---")
+	subscriber.Close()
+	time.Sleep(100 * time.Millisecond) // Wait for graceful shutdown
+
+	fmt.Println("--- Health Check: After Closing ---")
+	showHealthCheck(subscriber)
+}
+
+// showHealthCheck displays the health status of a subscriber
+func showHealthCheck(subscriber *redis.Subscriber) {
+	healthCheck := subscriber.HealthCheck()
+
+	fmt.Printf("Status: %s", healthCheck.Status)
+
+	if len(healthCheck.Details) > 0 {
+		fmt.Println("Details:")
+		for key, value := range healthCheck.Details {
+			fmt.Printf("  - %s: %s", key, value)
+		}
+	}
+}
+
+// getEnvOrDefault returns the value of an environment variable or a default value
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvOrDefaultInt returns the value of an environment variable as int or a default value
+func getEnvOrDefaultInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// maskPassword masks the password for display purposes
+func maskPassword(password string) string {
+	if password == "" {
+		return "(empty)"
+	}
+	return "***"
 }

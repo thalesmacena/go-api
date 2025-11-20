@@ -56,6 +56,14 @@
   - [🐳 Docker Usage](#-docker-usage)
     - [Useful Commands](#useful-commands)
     - [Monitoring \& Logging](#monitoring--logging)
+  - [📦 Package Documentation](#-package-documentation)
+    - [🔴 Redis (`pkg/redis`)](#-redis-pkgredis)
+    - [📨 Messages (`pkg/msg`)](#-messages-pkgmsg)
+    - [⚙️ Resource (`pkg/resource`)](#️-resource-pkgresource)
+    - [🌐 HTTP Client (`pkg/http`)](#-http-client-pkghttp)
+    - [📝 Logging (`pkg/log`)](#-logging-pkglog)
+    - [📬 SQS (`pkg/sqs`)](#-sqs-pkgsqs)
+    - [🔢 Utilities (`pkg/util`)](#-utilities-pkgutil)
   - [🤝 Contributing](#-contributing)
   - [📄 License](#-license)
 
@@ -246,7 +254,7 @@ The generated documentation files will be placed in the `docs/` directory:
 │   ├── http/            # HTTP utilities
 │   ├── log/             # Logging utilities
 │   ├── msg/             # Message handling
-│   ├── redis/           # Redis package (client, cache, lock, pubsub, health, config)
+│   ├── redis/           # Redis package (client, cache, lock, pubsub, ratelimit, health, config)
 │   ├── resource/        # Resource management
 │   ├── sqs/             # SQS utilities
 │   └── util/            # General utilities
@@ -268,7 +276,7 @@ The generated documentation files will be placed in the `docs/` directory:
 │   ├── http/            # HTTP client examples
 │   ├── log/             # Logging examples
 │   ├── msg/             # Message handling examples
-│   ├── redis/           # Redis examples (main, pubsub, lock)
+│   ├── redis/           # Redis examples (main, pubsub, ratelimit, lock)
 │   ├── resource/        # Resource management examples
 │   └── sqs/             # SQS examples
 ├── scripts/              # Build and deployment scripts
@@ -333,6 +341,239 @@ docker compose up -d --build
 - **Health Checks**: Built-in health monitoring for database, Redis (client and Pub/Sub), and queue connections
 - **Request Logging**: All HTTP requests are logged with detailed information
 - **Structured Logging**: Uses Uber Zap for structured, high-performance logging
+
+---
+
+## 📦 Package Documentation
+
+The `pkg/` directory contains reusable packages that provide core functionality for the application. Each package is designed to be independent and can be used in other projects.
+
+### 🔴 Redis (`pkg/redis`)
+
+Comprehensive Redis client with advanced features for caching, distributed locking, pub/sub, and rate limiting.
+
+**Features:**
+- **Client**: Fluent configuration API with connection pooling and timeouts
+- **Cache**: High-level caching with per-cache TTL configuration, automatic serialization, and namespaced keys (`CacheName::key`)
+- **Distributed Lock**: Four lock types with health check support:
+  - `SingleAttemptLock`: Immediate fail if lock unavailable
+  - `RetryLock`: Configurable retry attempts with delays
+  - `PersistentLock`: Auto-refresh for long-running tasks with health check
+  - `ScheduledTaskLock`: For cron jobs across multiple instances with health check
+- **Rate Limiter**: Distributed rate limiting with sliding windows:
+  - **Active Transactions**: Limit concurrent operations
+  - **TPS (Transactions Per Second)**: 1-second sliding window
+  - **TPM (Transactions Per Minute)**: 60-second sliding window
+  - Supports combined limits and wait/immediate error modes
+  - Health check metrics for monitoring
+- **Pub/Sub**: Namespaced channels with concurrent workers, auto-reconnect, and health monitoring
+- **Health Check**: Comprehensive health monitoring for all Redis operations
+
+**Examples:**
+```go
+// Create client
+config := redis.NewRedisConfig().
+    WithHost("localhost").
+    WithCacheTTL("user_cache", 10*time.Minute).
+    WithDefaultCacheTTL(1*time.Hour)
+
+client := redis.NewClient(config)
+
+// Cache
+cache := redis.NewCache(client, redis.NewCacheOptions().
+    WithCacheName("users").
+    WithTTL(5*time.Minute))
+
+cache.Set(ctx, "user:123", userData)
+cache.Get(ctx, "user:123", &userData)
+
+// Distributed Lock
+lock := redis.NewSingleAttemptLock(client, "critical_task", 30*time.Second, "tasks")
+if err := lock.Lock(ctx); err != nil {
+    return err
+}
+defer lock.Unlock(ctx)
+// Execute critical section
+
+// Rate Limiter
+limiter, _ := redis.NewRateLimiter(client, "api_endpoint", 
+    redis.NewRateLimiterOptions().
+        WithMaxActiveTransactions(10).
+        WithMaxTransactionsPerSecond(100).
+        WithMaxTransactionsPerMinute(5000))
+
+transactionID, err := limiter.Acquire(ctx)
+if err != nil {
+    return err
+}
+defer limiter.Release(ctx, transactionID)
+// Execute rate-limited operation
+```
+
+**See examples:** `example/redis/main.go`, `example/redis/cache/`, `example/redis/lock/main.go`, `example/redis/ratelimiter/main.go`
+
+### 📨 Messages (`pkg/msg`)
+
+YAML-based message management system for centralized message formatting.
+
+**Features:**
+- Load messages from YAML configuration
+- Support for nested message keys (dot notation)
+- Automatic placeholder replacement with `{0}`, `{1}`, etc.
+- JSON serialization for complex objects
+- Environment variable support via `MESSAGES_FILE_PATH`
+
+**Example YAML:**
+```yaml
+validation:
+  required: "Field {0} is required"
+  invalid: "Invalid value for {0}: {1}"
+error:
+  notFound: "Resource {0} not found with ID {1}"
+```
+
+**Usage:**
+```go
+msg.GetMessage("validation.required", "username")
+// Returns: "Field username is required"
+
+msg.GetMessage("error.notFound", "User", 123)
+// Returns: "Resource User not found with ID 123"
+```
+
+**See examples:** `example/msg/main.go`
+
+### ⚙️ Resource (`pkg/resource`)
+
+YAML-based application configuration with environment variable support and default values.
+
+**Features:**
+- Load configurations from YAML files
+- Environment variable resolution with syntax: `${ENV_VAR:default_value}`
+- Support for nested configuration keys (dot notation)
+- Type-safe getters: `GetString()`, `GetInt()`, `GetBool()`, `GetDuration()`, etc.
+- Automatic environment variable fallback
+
+**Example YAML:**
+```yaml
+server:
+  port: ${SERVER_PORT:8080}
+  timeout: ${SERVER_TIMEOUT:30s}
+database:
+  host: ${DB_HOST:localhost}
+  max_connections: ${DB_MAX_CONN:100}
+```
+
+**Usage:**
+```go
+port := resource.GetInt("server.port")           // 8080 or SERVER_PORT env var
+timeout := resource.GetDuration("server.timeout") // 30s or SERVER_TIMEOUT env var
+host := resource.GetString("database.host")      // "localhost" or DB_HOST env var
+```
+
+**See examples:** `example/resource/main.go`
+
+### 🌐 HTTP Client (`pkg/http`)
+
+Feature-rich HTTP client with retry logic, logging, and advanced configurations.
+
+**Features:**
+- Fluent configuration API
+- Automatic retry with exponential/fixed backoff
+- Configurable timeouts and retry conditions
+- Request/response logging
+- Support for JSON, XML, and form data
+- Custom headers and content types
+- 404 dismiss option for optional resources
+- Redirect control
+
+**Example:**
+```go
+client := http.NewClient("https://api.example.com").
+    WithTimeout(10*time.Second).
+    WithRetryConfig(&http.BackoffConfig{
+        MaxRetries: 3,
+        InitialDelay: 100*time.Millisecond,
+        Mode: http.ExponentialBackoff,
+    }).
+    WithDefaultHeader("Authorization", "Bearer token")
+
+var result Response
+err := client.Get("/endpoint", &result)
+```
+
+**See examples:** `example/http/main.go`
+
+### 📝 Logging (`pkg/log`)
+
+Structured logging using Uber Zap with UTC timestamps and environment-based log levels.
+
+**Features:**
+- High-performance structured logging
+- UTC time encoding with milliseconds
+- Environment-based log level configuration (`LOG_LEVEL`)
+- Supports: Debug, Info, Warn, Error, Panic, Fatal levels
+- Stack trace for errors
+- JSON output format
+
+**Example:**
+```go
+log.Info("Server started", 
+    zap.String("host", "localhost"),
+    zap.Int("port", 8080))
+
+log.Error("Database error",
+    zap.Error(err),
+    zap.String("query", query))
+```
+
+**See examples:** `example/log/main.go`
+
+### 📬 SQS (`pkg/sqs`)
+
+AWS SQS integration for message queue operations.
+
+**Features:**
+- Send single and batch messages
+- Configurable worker pools for concurrent processing
+- Automatic JSON serialization/deserialization
+- Error handling and retry logic
+- Supports LocalStack for local development
+
+**Example:**
+```go
+// Send message
+sender := sqs.NewSender(sqsClient)
+err := sender.SendMessage("my-queue", messageData)
+
+// Send batch
+messages := []sqs.BatchMessage{
+    {MessageID: "1", Body: data1},
+    {MessageID: "2", Body: data2},
+}
+result, err := sender.SendBatch("my-queue", messages)
+
+// Process messages
+worker := sqs.NewWorker(sqsClient, "my-queue", 5)
+worker.Start(ctx, func(msg *sqs.Message) error {
+    // Process message
+    return nil
+})
+```
+
+**See examples:** `example/sqs/main.go`
+
+### 🔢 Utilities (`pkg/util`)
+
+Common utility functions for number operations and conversions.
+
+**Features:**
+- Number utilities: `numberutils` package
+- Int and Int64 helper functions
+- Safe type conversions
+- Common mathematical operations
+
+---
 
 ## 🤝 Contributing
 
