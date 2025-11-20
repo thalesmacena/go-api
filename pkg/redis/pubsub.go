@@ -36,8 +36,8 @@ const (
 	InfoLevel
 )
 
-// PubSubHealthCheck represents the health check response for Redis pub/sub
-type PubSubHealthCheck struct {
+// SubscriberHealthCheck represents the health check response for Redis subscriber
+type SubscriberHealthCheck struct {
 	Status  HealthStatus      `json:"status"`
 	Details map[string]string `json:"details"`
 }
@@ -60,7 +60,7 @@ type PubSubConfig struct {
 func NewPubSubConfig() *PubSubConfig {
 	return &PubSubConfig{
 		PoolSize:             1,
-		LogLevel:             Silent,
+		LogLevel:             InfoLevel,
 		ReconnectDelay:       1 * time.Second,
 		MaxReconnectAttempts: 10,
 		ChannelNamespace:     "",
@@ -163,6 +163,8 @@ type Subscriber struct {
 	reconnectAttempts    int32 // atomic counter for reconnect attempts
 	mu                   sync.RWMutex
 	sub                  *redis.PubSub
+	ctx                  context.Context    // internal context for lifecycle management
+	cancel               context.CancelFunc // cancel function to stop subscriber
 }
 
 // NewSubscriber creates and returns a new Subscriber.
@@ -201,6 +203,8 @@ func NewSubscriber(client *redis.Client, handler MessageHandler, config *PubSubC
 		return nil, fmt.Errorf("pool size must be greater than 0")
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &Subscriber{
 		client:               client,
 		poolSize:             poolSize,
@@ -209,6 +213,8 @@ func NewSubscriber(client *redis.Client, handler MessageHandler, config *PubSubC
 		maxReconnectAttempts: maxReconnectAttempts,
 		channelNamespace:     channelNamespace,
 		handler:              handler,
+		ctx:                  ctx,
+		cancel:               cancel,
 	}, nil
 }
 
@@ -266,7 +272,7 @@ func (s *Subscriber) PSubscribe(ctx context.Context, patterns ...string) error {
 
 // Start begins listening for messages and processing them concurrently.
 // It will spawn PoolSize number of workers that keep listening for messages
-// until the provided context is canceled.
+// until the provided context is canceled or Stop() is called.
 func (s *Subscriber) Start(ctx context.Context) {
 	if s.sub == nil {
 		s.logf(ErrorLevel, "not subscribed to any channels or patterns")
@@ -276,13 +282,26 @@ func (s *Subscriber) Start(ctx context.Context) {
 	atomic.StoreInt32(&s.isRunning, 1)
 	defer atomic.StoreInt32(&s.isRunning, 0)
 
+	// Create a combined context that responds to both the provided context and internal cancellation
+	combinedCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Monitor internal context for Stop() calls
+	go func() {
+		select {
+		case <-s.ctx.Done():
+			cancel()
+		case <-combinedCtx.Done():
+		}
+	}()
+
 	var wg sync.WaitGroup
 
 	for i := 0; i < s.poolSize; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.listenMessages(ctx)
+			s.listenMessages(combinedCtx)
 		}()
 	}
 
@@ -307,7 +326,15 @@ func (s *Subscriber) listenMessages(ctx context.Context) {
 				go s.handleMessage(ctx, msg)
 			}
 
-			// If we get here, the channel was closed, try to reconnect
+			// If we get here, the channel was closed
+			// Check if context was cancelled before attempting reconnect
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			// Try to reconnect if not cancelled
 			if atomic.LoadInt32(&s.reconnectAttempts) < int32(s.maxReconnectAttempts) {
 				atomic.AddInt32(&s.reconnectAttempts, 1)
 				s.logf(ErrorLevel, "channel closed, attempting to reconnect (attempt %d/%d)",
@@ -315,8 +342,15 @@ func (s *Subscriber) listenMessages(ctx context.Context) {
 
 				if err := s.reconnect(ctx); err != nil {
 					s.logf(ErrorLevel, "failed to reconnect: %v", err)
-					time.Sleep(s.reconnectDelay)
-					continue
+
+					// Check again if context was cancelled
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						time.Sleep(s.reconnectDelay)
+						continue
+					}
 				}
 
 				atomic.StoreInt32(&s.reconnectAttempts, 0) // Reset on successful reconnect
@@ -364,8 +398,26 @@ func (s *Subscriber) reconnect(ctx context.Context) error {
 	return nil
 }
 
-// Close closes the subscriber
+// Stop gracefully stops the subscriber by canceling its internal context.
+// This method should be called before Close() to ensure all goroutines are stopped cleanly.
+// It's safe to call Stop() multiple times.
+func (s *Subscriber) Stop() {
+	if s.cancel != nil {
+		s.cancel()
+	}
+}
+
+// Close closes the subscriber and releases resources.
+// It automatically calls Stop() to cancel any running goroutines before closing the connection.
+// It's recommended to call Stop() explicitly before Close() with a small delay to allow graceful shutdown.
 func (s *Subscriber) Close() error {
+	// Stop the subscriber first to cancel goroutines
+	s.Stop()
+
+	// Wait for goroutines to finish processing and exit cleanly
+	// This prevents "channel closed" errors during shutdown
+	time.Sleep(150 * time.Millisecond)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -405,20 +457,25 @@ func ParseLogLevel(level string) LogLevel {
 }
 
 // HealthCheck returns the health status and details of the Redis pub/sub
-func (s *Subscriber) HealthCheck() PubSubHealthCheck {
+func (s *Subscriber) HealthCheck() SubscriberHealthCheck {
 	isRunning := atomic.LoadInt32(&s.isRunning) == 1
 	messagesProcessed := atomic.LoadInt64(&s.messagesProcessed)
 	reconnectAttempts := atomic.LoadInt32(&s.reconnectAttempts)
 
-	var status HealthStatus
-	if isRunning {
-		status = StatusUp
-	} else {
-		status = StatusDown
-	}
-
 	// Test Redis connectivity
 	redisAvailable := s.testRedisConnectivity()
+
+	// Determine status based on both running state and Redis connectivity
+	var status HealthStatus
+	if isRunning && redisAvailable {
+		status = StatusUp
+	} else if !isRunning {
+		status = StatusDown
+	} else if isRunning && !redisAvailable {
+		status = StatusDown // Running but can't connect to Redis is a problem
+	} else {
+		status = StatusUnknown
+	}
 
 	details := map[string]string{
 		"pool_size":              fmt.Sprintf("%d", s.poolSize),
@@ -433,11 +490,7 @@ func (s *Subscriber) HealthCheck() PubSubHealthCheck {
 		"patterns":               fmt.Sprintf("%v", s.patterns),
 	}
 
-	if !redisAvailable {
-		status = StatusDown
-	}
-
-	return PubSubHealthCheck{
+	return SubscriberHealthCheck{
 		Status:  status,
 		Details: details,
 	}

@@ -19,16 +19,19 @@ type CacheOptions struct {
 	Deserializer func([]byte, interface{}) error
 	// CacheName is the name of the cache for TTL lookup
 	CacheName string
+	// ttlSet indicates whether TTL was explicitly set
+	ttlSet bool
 }
 
 // NewCacheOptions creates a new cache options with default values
 func NewCacheOptions() *CacheOptions {
 	return &CacheOptions{
-		TTL:          1 * time.Hour,
+		TTL:          0, // Not set by default
 		RefreshTTL:   false,
 		Serializer:   json.Marshal,
 		Deserializer: json.Unmarshal,
 		CacheName:    "",
+		ttlSet:       false, // TTL not explicitly set
 	}
 }
 
@@ -38,6 +41,7 @@ func (co *CacheOptions) WithTTL(ttl time.Duration) *CacheOptions {
 		panic(fmt.Sprintf("invalid TTL: %v, must be non-negative", ttl))
 	}
 	co.TTL = ttl
+	co.ttlSet = true // Mark that TTL was explicitly set
 	return co
 }
 
@@ -87,20 +91,30 @@ func NewCache(client *Client, opts *CacheOptions) *Cache {
 	}
 }
 
-// getTTL returns the TTL for the cache, checking client configuration first
+// getTTL returns the TTL for the cache with proper hierarchy:
+// 1. CacheOptions.TTL (highest priority) - only if explicitly set
+// 2. Client.Config.CacheTTLs[cacheName] (medium priority)
+// 3. Client.Config.DefaultCacheTTL (lowest priority - fallback)
 func (c *Cache) getTTL() time.Duration {
-	// If cache name is specified, check client configuration
+	// Priority 1: CacheOptions TTL (most specific) - only if explicitly set
+	if c.opts.ttlSet {
+		return c.opts.TTL
+	}
+
+	// Priority 2: Client config TTL for specific cache name
 	if c.opts.CacheName != "" {
 		if clientTTL, exists := c.client.config.CacheTTLs[c.opts.CacheName]; exists {
 			return clientTTL
 		}
-		// If no specific TTL found, use default from client config
-		if c.client.config.DefaultCacheTTL > 0 {
-			return c.client.config.DefaultCacheTTL
-		}
 	}
-	// Fall back to cache options TTL
-	return c.opts.TTL
+
+	// Priority 3: Default TTL from client config (fallback)
+	if c.client.config.DefaultCacheTTL > 0 {
+		return c.client.config.DefaultCacheTTL
+	}
+
+	// Final fallback: default from CacheOptions (1 hour)
+	return 1 * time.Hour
 }
 
 // buildCacheKey constructs the full cache key using CacheName::cacheKey format
@@ -116,7 +130,14 @@ func (c *Cache) Get(ctx context.Context, key string, dest interface{}) error {
 	fullKey := c.buildCacheKey(key)
 	data, err := c.client.GetBytes(ctx, fullKey)
 	if err != nil {
+		// Real error (connection, etc.) - return it
 		return err
+	}
+
+	// Check if data is empty (key doesn't exist)
+	if len(data) == 0 {
+		// Key doesn't exist - this is not an error, just return nil
+		return nil
 	}
 
 	if c.opts.RefreshTTL {
@@ -141,7 +162,7 @@ func (c *Cache) Set(ctx context.Context, key string, value interface{}) error {
 	return c.client.Set(ctx, fullKey, data, c.getTTL())
 }
 
-// SetWithTTL stores a value in cache with custom TTL
+// SetWithTTL stores a value in cache with custom TTL (highest priority)
 func (c *Cache) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	fullKey := c.buildCacheKey(key)
 	data, err := c.opts.Serializer(value)
@@ -150,6 +171,24 @@ func (c *Cache) SetWithTTL(ctx context.Context, key string, value interface{}, t
 	}
 
 	return c.client.Set(ctx, fullKey, data, ttl)
+}
+
+// SetWithTTLAndRefresh stores a value in cache with custom TTL and refresh TTL on access
+func (c *Cache) SetWithTTLAndRefresh(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	fullKey := c.buildCacheKey(key)
+	data, err := c.opts.Serializer(value)
+	if err != nil {
+		return fmt.Errorf("failed to serialize value: %w", err)
+	}
+
+	// Store with custom TTL
+	err = c.client.Set(ctx, fullKey, data, ttl)
+	if err != nil {
+		return err
+	}
+
+	// If refresh TTL is enabled, we'll handle it in the Get method
+	return nil
 }
 
 // Delete removes a value from cache
@@ -184,8 +223,12 @@ func (c *Cache) GetOrSet(ctx context.Context, key string, dest interface{}, sett
 		return fmt.Errorf("failed to set value in cache: %w", err)
 	}
 
-	// Set the value in dest
-	return c.opts.Deserializer([]byte{}, dest)
+	// Serialize the value and deserialize it into dest
+	data, err := c.opts.Serializer(value)
+	if err != nil {
+		return fmt.Errorf("failed to serialize value: %w", err)
+	}
+	return c.opts.Deserializer(data, dest)
 }
 
 // MGet retrieves multiple values from cache
@@ -196,10 +239,14 @@ func (c *Cache) MGet(ctx context.Context, keys []string) (map[string][]byte, err
 		fullKey := c.buildCacheKey(key)
 		data, err := c.client.GetBytes(ctx, fullKey)
 		if err != nil {
-			// Skip keys that don't exist or have errors
-			continue
+			// Real error (connection, etc.) - return it
+			return nil, err
 		}
-		result[key] = data
+
+		// Only add non-empty data to result
+		if len(data) > 0 {
+			result[key] = data
+		}
 	}
 
 	return result, nil

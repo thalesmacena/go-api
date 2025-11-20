@@ -3,10 +3,52 @@ package redis
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
+
+// LockRegistry tracks active locks for health check
+type LockRegistry struct {
+	locks map[string]*Lock
+	mu    sync.RWMutex
+}
+
+// Global lock registry
+var lockRegistry = &LockRegistry{
+	locks: make(map[string]*Lock),
+}
+
+// RegisterLock registers a lock with the registry
+func (lr *LockRegistry) RegisterLock(lock *Lock) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	if lock.opts.CacheName != "" {
+		lr.locks[lock.opts.CacheName] = lock
+	}
+}
+
+// UnregisterLock removes a lock from the registry
+func (lr *LockRegistry) UnregisterLock(cacheName string) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	delete(lr.locks, cacheName)
+}
+
+// GetLockStatus returns the status of all registered locks
+func (lr *LockRegistry) GetLockStatus() map[string]bool {
+	lr.mu.RLock()
+	defer lr.mu.RUnlock()
+
+	status := make(map[string]bool)
+	for cacheName, lock := range lr.locks {
+		status[cacheName] = lock.IsAcquired()
+	}
+	return status
+}
 
 // LockOptions represents options for distributed locking
 type LockOptions struct {
@@ -20,16 +62,25 @@ type LockOptions struct {
 	RefreshInterval time.Duration
 	// LockNamespace is the namespace for organizing locks
 	LockNamespace string
+	// CacheName is used for health check identification
+	CacheName string
+	// PersistentRefresh indicates if the lock should be refreshed indefinitely
+	PersistentRefresh bool
+	// InfiniteRetry indicates if the lock should retry indefinitely
+	InfiniteRetry bool
 }
 
 // NewLockOptions creates a new lock options with default values
 func NewLockOptions() *LockOptions {
 	return &LockOptions{
-		TTL:             30 * time.Second,
-		RetryDelay:      100 * time.Millisecond,
-		MaxRetries:      10,
-		RefreshInterval: 10 * time.Second,
-		LockNamespace:   "",
+		TTL:               30 * time.Second,
+		RetryDelay:        100 * time.Millisecond,
+		MaxRetries:        10,
+		RefreshInterval:   10 * time.Second,
+		LockNamespace:     "",
+		CacheName:         "",
+		PersistentRefresh: false,
+		InfiniteRetry:     false,
 	}
 }
 
@@ -75,6 +126,24 @@ func (lo *LockOptions) WithLockNamespace(namespace string) *LockOptions {
 	return lo
 }
 
+// WithCacheName sets the cache name for health check identification
+func (lo *LockOptions) WithCacheName(cacheName string) *LockOptions {
+	lo.CacheName = cacheName
+	return lo
+}
+
+// WithPersistentRefresh sets whether the lock should be refreshed indefinitely
+func (lo *LockOptions) WithPersistentRefresh(persistent bool) *LockOptions {
+	lo.PersistentRefresh = persistent
+	return lo
+}
+
+// WithInfiniteRetry sets whether the lock should retry indefinitely
+func (lo *LockOptions) WithInfiniteRetry(infinite bool) *LockOptions {
+	lo.InfiniteRetry = infinite
+	return lo
+}
+
 // DefaultLockOptions returns default lock options
 func DefaultLockOptions() *LockOptions {
 	return NewLockOptions()
@@ -82,10 +151,13 @@ func DefaultLockOptions() *LockOptions {
 
 // Lock represents a distributed lock
 type Lock struct {
-	client *Client
-	key    string
-	value  string
-	opts   *LockOptions
+	client      *Client
+	key         string
+	value       string
+	opts        *LockOptions
+	refreshStop chan struct{}
+	refreshing  bool
+	acquired    bool
 }
 
 // NewLock creates a new distributed lock
@@ -93,12 +165,20 @@ func NewLock(client *Client, key string, opts *LockOptions) *Lock {
 	if opts == nil {
 		opts = DefaultLockOptions()
 	}
-	return &Lock{
-		client: client,
-		key:    key,
-		value:  generateLockValue(),
-		opts:   opts,
+	lock := &Lock{
+		client:      client,
+		key:         key,
+		value:       generateLockValue(),
+		opts:        opts,
+		refreshStop: make(chan struct{}),
 	}
+
+	// Register lock if it has a cache name
+	if opts.CacheName != "" {
+		lockRegistry.RegisterLock(lock)
+	}
+
+	return lock
 }
 
 // buildLockKey constructs the full lock key using LockNamespace::lockKey format
@@ -112,7 +192,33 @@ func (l *Lock) buildLockKey() string {
 // Lock attempts to acquire the lock
 func (l *Lock) Lock(ctx context.Context) error {
 	fullKey := l.buildLockKey()
-	for attempt := 0; attempt <= l.opts.MaxRetries; attempt++ {
+
+	// Handle infinite retry scenario
+	if l.opts.InfiniteRetry {
+		for {
+			// Try to acquire the lock using SET with NX and EX options
+			result, err := l.client.GetClient().SetNX(ctx, fullKey, l.value, l.opts.TTL).Result()
+			if err != nil {
+				return fmt.Errorf("failed to acquire lock: %w", err)
+			}
+
+			if result {
+				l.acquired = true
+				return nil
+			}
+
+			// Wait before retrying
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(l.opts.RetryDelay):
+				continue
+			}
+		}
+	}
+
+	// Handle finite retry scenario
+	for attempt := 0; attempt < l.opts.MaxRetries; attempt++ {
 		// Try to acquire the lock using SET with NX and EX options
 		result, err := l.client.GetClient().SetNX(ctx, fullKey, l.value, l.opts.TTL).Result()
 		if err != nil {
@@ -120,12 +226,8 @@ func (l *Lock) Lock(ctx context.Context) error {
 		}
 
 		if result {
+			l.acquired = true
 			return nil
-		}
-
-		// If this is the last attempt, return error
-		if attempt == l.opts.MaxRetries {
-			return fmt.Errorf("failed to acquire lock after %d attempts", l.opts.MaxRetries+1)
 		}
 
 		// Wait before retrying
@@ -137,11 +239,25 @@ func (l *Lock) Lock(ctx context.Context) error {
 		}
 	}
 
-	return fmt.Errorf("failed to acquire lock")
+	// Final attempt
+	result, err := l.client.GetClient().SetNX(ctx, fullKey, l.value, l.opts.TTL).Result()
+	if err != nil {
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+
+	if result {
+		l.acquired = true
+		return nil
+	}
+
+	return fmt.Errorf("failed to acquire lock after %d attempts", l.opts.MaxRetries)
 }
 
 // Unlock releases the lock
 func (l *Lock) Unlock(ctx context.Context) error {
+	// Stop auto-refresh if it's running
+	l.StopAutoRefresh()
+
 	// Use Lua script to ensure we only delete our own lock
 	script := `
 		if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -159,6 +275,13 @@ func (l *Lock) Unlock(ctx context.Context) error {
 
 	if result.(int64) == 0 {
 		return fmt.Errorf("lock was not held by this client")
+	}
+
+	l.acquired = false
+
+	// Unregister lock from registry
+	if l.opts.CacheName != "" {
+		lockRegistry.UnregisterLock(l.opts.CacheName)
 	}
 
 	return nil
@@ -182,7 +305,7 @@ func (l *Lock) Refresh(ctx context.Context) error {
 	}
 
 	if result.(int64) == 0 {
-		return fmt.Errorf("lock was not held by this client")
+		return fmt.Errorf("lock was not held by this client or has expired")
 	}
 
 	return nil
@@ -203,28 +326,91 @@ func (l *Lock) IsLocked(ctx context.Context) (bool, error) {
 }
 
 // AutoRefresh starts a goroutine that automatically refreshes the lock
+// If the context is cancelled, the auto-refresh will stop
 func (l *Lock) AutoRefresh(ctx context.Context) <-chan error {
 	errChan := make(chan error, 1)
 
+	if l.refreshing {
+		errChan <- fmt.Errorf("auto-refresh is already running")
+		return errChan
+	}
+
+	// Create new channel for this refresh session
+	l.refreshStop = make(chan struct{})
+	l.refreshing = true
+
 	go func() {
+		defer func() {
+			l.refreshing = false
+			// Always send a completion signal when the goroutine exits
+			select {
+			case errChan <- nil:
+			default:
+				// Channel might be closed, ignore
+			}
+		}()
+
 		ticker := time.NewTicker(l.opts.RefreshInterval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
-				errChan <- ctx.Err()
+				// Always respect context cancellation, even for persistent refresh
+				// This allows the Graceful shutdown
+				select {
+				case errChan <- ctx.Err():
+				default:
+					// Channel might be closed, ignore
+				}
+				return
+			case <-l.refreshStop:
+				// Lock was released, stop refreshing
+				// Completion signal will be sent by defer
 				return
 			case <-ticker.C:
-				if err := l.Refresh(ctx); err != nil {
-					errChan <- err
-					return
+				// For persistent refresh, use background context to avoid cancellation
+				// For non-persistent refresh, use the provided context
+				refreshCtx := ctx
+				if l.opts.PersistentRefresh {
+					refreshCtx = context.Background()
+				}
+				if err := l.Refresh(refreshCtx); err != nil {
+					if !l.opts.PersistentRefresh {
+						// For non-persistent refresh, send the refresh error
+						select {
+						case errChan <- err:
+						default:
+							// Channel might be closed, ignore
+						}
+						return
+					}
+					// For persistent refresh, continue trying to refresh
+					// This ensures the lock is maintained even if individual refreshes fail
 				}
 			}
 		}
 	}()
 
 	return errChan
+}
+
+// StopAutoRefresh stops the auto-refresh goroutine
+func (l *Lock) StopAutoRefresh() {
+	if l.refreshing {
+		select {
+		case <-l.refreshStop:
+			// Channel already closed, nothing to do
+		default:
+			close(l.refreshStop)
+		}
+		l.refreshing = false
+	}
+}
+
+// IsAutoRefreshing returns true if auto-refresh is currently running
+func (l *Lock) IsAutoRefreshing() bool {
+	return l.refreshing
 }
 
 // LockWithFunc executes a function while holding a lock
@@ -255,6 +441,76 @@ func LockWithTimeout(ctx context.Context, client *Client, key string, opts *Lock
 	defer cancel()
 
 	return LockWithFunc(timeoutCtx, client, key, opts, fn)
+}
+
+// IsAcquired returns true if the lock is currently acquired by this instance
+func (l *Lock) IsAcquired() bool {
+	return l.acquired
+}
+
+// GetCacheName returns the cache name for health check identification
+func (l *Lock) GetCacheName() string {
+	return l.opts.CacheName
+}
+
+// GetKey returns the lock key
+func (l *Lock) GetKey() string {
+	return l.key
+}
+
+// GetFullKey returns the full lock key with namespace
+func (l *Lock) GetFullKey() string {
+	return l.buildLockKey()
+}
+
+// NewSingleAttemptLock creates a lock for scenario 1 (single attempt, no retry)
+func NewSingleAttemptLock(client *Client, key string, ttl time.Duration, namespace string) *Lock {
+	opts := NewLockOptions().
+		WithTTL(ttl).
+		WithMaxRetries(0).
+		WithLockNamespace(namespace).
+		WithCacheName(key)
+	return NewLock(client, key, opts)
+}
+
+// NewRetryLock creates a lock for scenario 2 (retry with manual refresh)
+func NewRetryLock(client *Client, key string, ttl time.Duration, retryDelay time.Duration, maxRetries int, namespace string) *Lock {
+	opts := NewLockOptions().
+		WithTTL(ttl).
+		WithRetryDelay(retryDelay).
+		WithMaxRetries(maxRetries).
+		WithLockNamespace(namespace).
+		WithCacheName(key)
+	return NewLock(client, key, opts)
+}
+
+// NewPersistentLock creates a lock for scenario 3 (persistent with auto refresh)
+func NewPersistentLock(client *Client, key string, ttl time.Duration, refreshInterval time.Duration, namespace string) *Lock {
+	opts := NewLockOptions().
+		WithTTL(ttl).
+		WithRefreshInterval(refreshInterval).
+		WithPersistentRefresh(true).
+		WithInfiniteRetry(true).
+		WithLockNamespace(namespace).
+		WithCacheName(key)
+	return NewLock(client, key, opts)
+}
+
+// NewScheduledTaskLock creates a lock for scenario 4 (scheduled task with persistent refresh)
+func NewScheduledTaskLock(client *Client, key string, ttl time.Duration, refreshInterval time.Duration, namespace string) *Lock {
+	opts := NewLockOptions().
+		WithTTL(ttl).
+		WithRefreshInterval(refreshInterval).
+		WithPersistentRefresh(true).
+		WithInfiniteRetry(true).
+		WithLockNamespace(namespace).
+		WithCacheName(key)
+	return NewLock(client, key, opts)
+}
+
+// GetLockStatus returns the status of all registered locks for health check
+func GetLockStatus() map[string]bool {
+	return lockRegistry.GetLockStatus()
 }
 
 // generateLockValue generates a unique value for the lock

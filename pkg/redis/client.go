@@ -3,7 +3,9 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -61,6 +63,11 @@ func (c *Client) GetClient() *redis.Client {
 	return c.rdb
 }
 
+// GetConfig returns the Redis configuration
+func (c *Client) GetConfig() *Config {
+	return c.config
+}
+
 // Set stores a key-value pair with optional expiration
 func (c *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	return c.rdb.Set(ctx, key, value, expiration).Err()
@@ -68,18 +75,44 @@ func (c *Client) Set(ctx context.Context, key string, value interface{}, expirat
 
 // Get retrieves a value by key
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
-	return c.rdb.Get(ctx, key).Result()
+	result, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - return empty string (this is not an error)
+			return "", nil
+		}
+		// Real error (connection, etc.) - return it
+		return "", err
+	}
+	return result, nil
 }
 
 // GetBytes retrieves a value by key as bytes
 func (c *Client) GetBytes(ctx context.Context, key string) ([]byte, error) {
-	return c.rdb.Get(ctx, key).Bytes()
+	result, err := c.rdb.Get(ctx, key).Bytes()
+	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - return empty bytes (this is not an error)
+			return []byte{}, nil
+		}
+		// Real error (connection, etc.) - return it
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetJSON retrieves a JSON value by key and unmarshals it into the provided interface
 func (c *Client) GetJSON(ctx context.Context, key string, dest interface{}) error {
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - this is not an error, just return nil
+			return nil
+		}
+		// Real error (connection, etc.) - return it
 		return err
 	}
 	return json.Unmarshal([]byte(val), dest)
@@ -92,6 +125,66 @@ func (c *Client) SetJSON(ctx context.Context, key string, value interface{}, exp
 		return fmt.Errorf("failed to marshal value to JSON: %w", err)
 	}
 	return c.rdb.Set(ctx, key, jsonData, expiration).Err()
+}
+
+// SetInt stores an integer value with optional expiration
+func (c *Client) SetInt(ctx context.Context, key string, value int64, expiration time.Duration) error {
+	return c.rdb.Set(ctx, key, strconv.FormatInt(value, 10), expiration).Err()
+}
+
+// GetInt retrieves an integer value by key
+func (c *Client) GetInt(ctx context.Context, key string) (int64, error) {
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - return 0 (this is not an error)
+			return 0, nil
+		}
+		// Real error (connection, etc.) - return it
+		return 0, err
+	}
+	return strconv.ParseInt(val, 10, 64)
+}
+
+// SetFloat stores a float64 value with optional expiration
+func (c *Client) SetFloat(ctx context.Context, key string, value float64, expiration time.Duration) error {
+	return c.rdb.Set(ctx, key, strconv.FormatFloat(value, 'f', -1, 64), expiration).Err()
+}
+
+// GetFloat retrieves a float64 value by key
+func (c *Client) GetFloat(ctx context.Context, key string) (float64, error) {
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - return 0 (this is not an error)
+			return 0, nil
+		}
+		// Real error (connection, etc.) - return it
+		return 0, err
+	}
+	return strconv.ParseFloat(val, 64)
+}
+
+// SetBool stores a boolean value with optional expiration
+func (c *Client) SetBool(ctx context.Context, key string, value bool, expiration time.Duration) error {
+	return c.rdb.Set(ctx, key, strconv.FormatBool(value), expiration).Err()
+}
+
+// GetBool retrieves a boolean value by key
+func (c *Client) GetBool(ctx context.Context, key string) (bool, error) {
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		// Check if it's a "key not found" error (redis.Nil) or a real error
+		if errors.Is(err, redis.Nil) {
+			// Key doesn't exist - return false (this is not an error)
+			return false, nil
+		}
+		// Real error (connection, etc.) - return it
+		return false, err
+	}
+	return strconv.ParseBool(val)
 }
 
 // Delete removes one or more keys
@@ -279,6 +372,66 @@ func (c *Client) FlushAll(ctx context.Context) error {
 	return c.rdb.FlushAll(ctx).Err()
 }
 
+// FlushDBAsync removes all keys from the current database asynchronously
+func (c *Client) FlushDBAsync(ctx context.Context) error {
+	return c.rdb.FlushDBAsync(ctx).Err()
+}
+
+// FlushAllAsync removes all keys from all databases asynchronously
+func (c *Client) FlushAllAsync(ctx context.Context) error {
+	return c.rdb.FlushAllAsync(ctx).Err()
+}
+
+// FlushDBWithFallback removes all keys from the current database, with fallback to manual deletion
+func (c *Client) FlushDBWithFallback(ctx context.Context) error {
+	// Try the native FlushDB command first
+	err := c.FlushDB(ctx)
+	if err == nil {
+		return nil
+	}
+
+	// If FlushDB fails, fall back to manual deletion
+	fmt.Printf("FlushDB command failed (%v), falling back to manual key deletion...\n", err)
+	return c.flushDBManual(ctx)
+}
+
+// FlushAllWithFallback removes all keys from all databases, with fallback to manual deletion
+func (c *Client) FlushAllWithFallback(ctx context.Context) error {
+	// Try the native FlushAll command first
+	err := c.FlushAll(ctx)
+	if err == nil {
+		return nil
+	}
+
+	// If FlushAll fails, fall back to manual deletion
+	fmt.Printf("FlushAll command failed (%v), falling back to manual key deletion...\n", err)
+	return c.flushAllManual(ctx)
+}
+
+// flushDBManual manually deletes all keys from the current database
+func (c *Client) flushDBManual(ctx context.Context) error {
+	// Get all keys
+	keys, err := c.Keys(ctx, "*")
+	if err != nil {
+		return fmt.Errorf("failed to get keys: %w", err)
+	}
+
+	if len(keys) == 0 {
+		return nil // No keys to delete
+	}
+
+	// Delete all keys
+	return c.Delete(ctx, keys...)
+}
+
+// flushAllManual manually deletes all keys from all databases
+func (c *Client) flushAllManual(ctx context.Context) error {
+	// For manual flush all, we can only flush the current database
+	// since we can't easily switch databases with the go-redis client
+	fmt.Println("Note: Manual FlushAll only clears the current database")
+	return c.flushDBManual(ctx)
+}
+
 // Info returns information and statistics about the server
 func (c *Client) Info(ctx context.Context, section ...string) (string, error) {
 	return c.rdb.Info(ctx, section...).Result()
@@ -287,4 +440,29 @@ func (c *Client) Info(ctx context.Context, section ...string) (string, error) {
 // Stats returns the client pool statistics
 func (c *Client) Stats() *redis.PoolStats {
 	return c.rdb.PoolStats()
+}
+
+// GetDBSize returns the number of keys in the current database
+func (c *Client) GetDBSize(ctx context.Context) (int64, error) {
+	return c.rdb.DBSize(ctx).Result()
+}
+
+// GetInfo returns Redis server information
+func (c *Client) GetInfo(ctx context.Context, section ...string) (string, error) {
+	return c.rdb.Info(ctx, section...).Result()
+}
+
+// CheckFlushCommandsAvailability checks if flush commands are available
+func (c *Client) CheckFlushCommandsAvailability(ctx context.Context) (map[string]bool, error) {
+	result := make(map[string]bool)
+
+	// Test FlushDB
+	err := c.FlushDB(ctx)
+	result["FlushDB"] = err == nil
+
+	// Test FlushAll
+	err = c.FlushAll(ctx)
+	result["FlushAll"] = err == nil
+
+	return result, nil
 }
