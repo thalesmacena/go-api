@@ -1,7 +1,7 @@
 package aws
 
-import "github.com/aws/aws-sdk-go/service/sqs"
+import "github.com/aws/aws-sdk-go-v2/service/sqs"
 
-func NewSqsClient() *sqs.SQS {
-	return sqs.New(Session)
+func NewSqsClient() *sqs.Client {
+	return sqs.NewFromConfig(Config)
 }

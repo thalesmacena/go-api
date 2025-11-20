@@ -7,7 +7,7 @@ import (
 	"go-api/internal/domain/usecase/weather"
 	"go-api/pkg/log"
 
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 type WeatherProcessor struct {
@@ -21,7 +21,7 @@ func NewWeatherProcessor(weatherUseCase weather.UseCase) *WeatherProcessor {
 }
 
 // HandleMessage implements the sqs.Handler interface
-func (p *WeatherProcessor) HandleMessage(msg *sqs.Message) error {
+func (p *WeatherProcessor) HandleMessage(msg *types.Message) error {
 	if msg == nil || msg.Body == nil {
 		return fmt.Errorf("received nil message or message body")
 	}

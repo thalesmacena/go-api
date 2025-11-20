@@ -3,8 +3,6 @@ package aws
 import (
 	"go-api/internal/domain/gateway/queue"
 	"go-api/pkg/sqs"
-
-	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 )
 
 // SQSSenderAdapter adapts the pkg/sqs.Sender to implement domain queue.Sender interface
@@ -13,7 +11,7 @@ type SQSSenderAdapter struct {
 }
 
 // NewSQSSenderAdapter creates a new SQS sender adapter that implements domain interface
-func NewSQSSenderAdapter(sqsClient sqsiface.SQSAPI) queue.Sender {
+func NewSQSSenderAdapter(sqsClient sqs.SQSClient) queue.Sender {
 	return &SQSSenderAdapter{
 		sqsSender: sqs.NewSender(sqsClient),
 	}
