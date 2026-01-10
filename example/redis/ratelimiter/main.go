@@ -91,6 +91,18 @@ func main() {
 	fmt.Println("\n=== Scenario: Health Check and Metrics Monitoring ===")
 	exampleScenarioHealthCheckMetrics(ctx, client)
 
+	// Example Scenario: Dynamic key usage
+	fmt.Println("\n=== Scenario: Dynamic Key Usage ===")
+	exampleScenarioDynamicKey(ctx, client)
+
+	// Example Scenario: WithTransaction without optional key
+	fmt.Println("\n=== Scenario: WithTransaction Without Optional Key ===")
+	exampleScenarioWithTransaction(ctx, client)
+
+	// Example Scenario: WithTransaction with optional key
+	fmt.Println("\n=== Scenario: WithTransaction With Optional Key ===")
+	exampleScenarioWithTransactionWithKey(ctx, client)
+
 	fmt.Println("\n All distributed rate limiter scenarios completed successfully!")
 }
 
@@ -865,4 +877,184 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// exampleScenarioDynamicKey demonstrates rate limiting with dynamic keys
+func exampleScenarioDynamicKey(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing rate limiter with dynamic keys (user-specific rate limiting)...")
+	fmt.Println("Each user gets their own rate limit bucket")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxActiveTransactions(3).
+		WithMaxTransactionsPerSecond(2).
+		WithWaitOnLimit(false).
+		WithNamespace("dynamic_key").
+		WithCacheName("dynamic_key_test")
+
+	limiter, err := redis.NewRateLimiter(client, "api_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	users := []string{"user1", "user2", "user3"}
+
+	// Each user makes 5 requests
+	for _, userID := range users {
+		wg.Add(1)
+		go func(user string) {
+			defer wg.Done()
+			fmt.Printf("\n[%s] Starting requests...\n", user)
+
+			successCount := 0
+			failureCount := 0
+
+			for i := range 5 {
+				// Use dynamic key: user-specific rate limiting
+				transactionID, err := limiter.AcquireWithKey(ctx, user)
+				if err != nil {
+					failureCount++
+					fmt.Printf("[%s] Request %d: Rejected - %v\n", user, i+1, err)
+				} else {
+					successCount++
+					fmt.Printf("[%s] Request %d: Acquired transaction %s\n", user, i+1, transactionID[:16]+"...")
+
+					// Simulate work
+					time.Sleep(300 * time.Millisecond)
+
+					// Release with the same dynamic key
+					err = limiter.ReleaseWithKey(ctx, transactionID, user)
+					if err != nil {
+						fmt.Printf("[%s] Request %d: Failed to release - %v\n", user, i+1, err)
+					} else {
+						fmt.Printf("[%s] Request %d: Released\n", user, i+1)
+					}
+				}
+
+				time.Sleep(200 * time.Millisecond)
+			}
+
+			fmt.Printf("\n[%s] Results: %d successful, %d failed\n", user, successCount, failureCount)
+		}(userID)
+	}
+
+	wg.Wait()
+	fmt.Println("\nDynamic key scenario completed - each user had independent rate limits!")
+}
+
+// exampleScenarioWithTransaction demonstrates WithTransaction without optional key
+func exampleScenarioWithTransaction(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing WithTransaction helper method (without optional key)...")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxActiveTransactions(2).
+		WithMaxTransactionsPerSecond(3).
+		WithWaitOnLimit(false).
+		WithNamespace("with_transaction").
+		WithCacheName("with_transaction_test")
+
+	limiter, err := redis.NewRateLimiter(client, "api_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	successCount := 0
+	failureCount := 0
+	var mu sync.Mutex
+
+	// Execute 10 transactions using WithTransaction
+	fmt.Println("Executing 10 transactions using WithTransaction...")
+	for i := range 10 {
+		wg.Add(1)
+		go func(requestID int) {
+			defer wg.Done()
+
+			err := limiter.WithTransaction(ctx, func() error {
+				// Simulate work inside the transaction
+				fmt.Printf("Transaction %02d: Processing...\n", requestID)
+				time.Sleep(500 * time.Millisecond)
+				fmt.Printf("Transaction %02d: Completed\n", requestID)
+				return nil
+			})
+
+			mu.Lock()
+			if err != nil {
+				failureCount++
+				fmt.Printf("Transaction %02d: Failed - %v\n", requestID, err)
+			} else {
+				successCount++
+			}
+			mu.Unlock()
+		}(i + 1)
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	wg.Wait()
+	fmt.Printf("\nResults: %d successful, %d failed\n", successCount, failureCount)
+	fmt.Println("WithTransaction automatically handles Acquire and Release!")
+}
+
+// exampleScenarioWithTransactionWithKey demonstrates WithTransaction with optional key
+func exampleScenarioWithTransactionWithKey(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing WithTransactionWithKey helper method (with optional key)...")
+	fmt.Println("Different resources get their own rate limit buckets")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxActiveTransactions(2).
+		WithMaxTransactionsPerSecond(2).
+		WithWaitOnLimit(false).
+		WithNamespace("with_transaction_key").
+		WithCacheName("with_transaction_key_test")
+
+	limiter, err := redis.NewRateLimiter(client, "api_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	resources := []string{"resource_a", "resource_b", "resource_c"}
+
+	// Each resource makes transactions with its own key
+	for _, resourceID := range resources {
+		wg.Add(1)
+		go func(resource string) {
+			defer wg.Done()
+			fmt.Printf("\n[%s] Starting transactions...\n", resource)
+
+			successCount := 0
+			failureCount := 0
+
+			for i := range 4 {
+				err := limiter.WithTransactionWithKey(ctx, resource, func() error {
+					// Simulate work on the specific resource
+					fmt.Printf("[%s] Transaction %d: Processing...\n", resource, i+1)
+					time.Sleep(400 * time.Millisecond)
+					fmt.Printf("[%s] Transaction %d: Completed\n", resource, i+1)
+					return nil
+				})
+
+				if err != nil {
+					failureCount++
+					fmt.Printf("[%s] Transaction %d: Failed - %v\n", resource, i+1, err)
+				} else {
+					successCount++
+				}
+
+				time.Sleep(200 * time.Millisecond)
+			}
+
+			fmt.Printf("\n[%s] Results: %d successful, %d failed\n", resource, successCount, failureCount)
+		}(resourceID)
+	}
+
+	wg.Wait()
+	fmt.Println("\nWithTransactionWithKey scenario completed - each resource had independent rate limits!")
 }
