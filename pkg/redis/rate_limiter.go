@@ -222,26 +222,54 @@ func (rl *RateLimiter) buildKey(suffix string) string {
 	return rl.key + "::" + suffix
 }
 
+// buildKeyWithSuffix constructs the full key with an optional additional key suffix
+func (rl *RateLimiter) buildKeyWithSuffix(suffix string, additionalKey string) string {
+	baseKey := rl.key
+	if additionalKey != "" {
+		baseKey = rl.key + "::" + additionalKey
+	}
+	if rl.opts.Namespace != "" {
+		return rl.opts.Namespace + "::" + baseKey + "::" + suffix
+	}
+	return baseKey + "::" + suffix
+}
+
 // Acquire attempts to acquire a transaction slot
 func (rl *RateLimiter) Acquire(ctx context.Context) (string, error) {
+	return rl.AcquireWithKey(ctx, "")
+}
+
+// AcquireWithKey attempts to acquire a transaction slot with an optional additional key
+// The additional key will be concatenated to the base key for rate limiting purposes
+func (rl *RateLimiter) AcquireWithKey(ctx context.Context, additionalKey string) (string, error) {
 	if rl.opts.WaitOnLimit {
-		return rl.acquireWithWait(ctx)
+		return rl.acquireWithWait(ctx, additionalKey)
 	}
-	return rl.acquireImmediate(ctx)
+	return rl.acquireImmediate(ctx, additionalKey)
 }
 
 // acquireImmediate attempts to acquire immediately or returns error
-func (rl *RateLimiter) acquireImmediate(ctx context.Context) (string, error) {
+func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey string) (string, error) {
 	// Check all limits using Lua script for atomicity
 	script := rl.buildAcquireScript()
+
+	// Build dynamic key names if additional key is provided
+	activeKey := rl.activeKeyName
+	tpsKey := rl.tpsKeyName
+	tpmKey := rl.tpmKeyName
+	if additionalKey != "" {
+		activeKey = rl.buildKeyWithSuffix("active", additionalKey)
+		tpsKey = rl.buildKeyWithSuffix("tps", additionalKey)
+		tpmKey = rl.buildKeyWithSuffix("tpm", additionalKey)
+	}
 
 	now := time.Now()
 	transactionID := fmt.Sprintf("%d", now.UnixNano())
 
 	result, err := rl.client.GetClient().Eval(ctx, script, []string{
-		rl.activeKeyName,
-		rl.tpsKeyName,
-		rl.tpmKeyName,
+		activeKey,
+		tpsKey,
+		tpmKey,
 	},
 		rl.opts.MaxActiveTransactions,
 		rl.opts.MaxTransactionsPerSecond,
@@ -276,11 +304,11 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context) (string, error) {
 }
 
 // acquireWithWait attempts to acquire with retry/wait logic
-func (rl *RateLimiter) acquireWithWait(ctx context.Context) (string, error) {
+func (rl *RateLimiter) acquireWithWait(ctx context.Context, additionalKey string) (string, error) {
 	deadline := time.Now().Add(rl.opts.WaitTimeout)
 
 	for {
-		transactionID, err := rl.acquireImmediate(ctx)
+		transactionID, err := rl.acquireImmediate(ctx, additionalKey)
 		if err == nil {
 			return transactionID, nil
 		}
@@ -375,20 +403,31 @@ func (rl *RateLimiter) buildAcquireScript() string {
 
 // Release releases a transaction slot
 func (rl *RateLimiter) Release(ctx context.Context, transactionID string) error {
+	return rl.ReleaseWithKey(ctx, transactionID, "")
+}
+
+// ReleaseWithKey releases a transaction slot with an optional additional key
+// The additional key must match the one used in AcquireWithKey
+func (rl *RateLimiter) ReleaseWithKey(ctx context.Context, transactionID string, additionalKey string) error {
 	if transactionID == "" {
 		return fmt.Errorf("transaction ID is required")
 	}
 
 	// Only decrement active transactions counter
 	if rl.opts.MaxActiveTransactions > 0 {
-		count, err := rl.client.Decr(ctx, rl.activeKeyName)
+		activeKey := rl.activeKeyName
+		if additionalKey != "" {
+			activeKey = rl.buildKeyWithSuffix("active", additionalKey)
+		}
+
+		count, err := rl.client.Decr(ctx, activeKey)
 		if err != nil {
 			return fmt.Errorf("failed to release transaction: %w", err)
 		}
 
 		// Ensure count doesn't go below zero
 		if count < 0 {
-			_ = rl.client.Set(ctx, rl.activeKeyName, 0, rl.opts.TransactionTTL*2)
+			_ = rl.client.Set(ctx, activeKey, 0, rl.opts.TransactionTTL*2)
 		}
 	}
 
@@ -483,15 +522,21 @@ func GetRateLimiterMetrics(ctx context.Context) map[string]map[string]string {
 
 // WithTransaction executes a function with rate limiting
 func (rl *RateLimiter) WithTransaction(ctx context.Context, fn func() error) error {
+	return rl.WithTransactionWithKey(ctx, "", fn)
+}
+
+// WithTransactionWithKey executes a function with rate limiting using an optional additional key
+// The additional key will be concatenated to the base key for rate limiting purposes
+func (rl *RateLimiter) WithTransactionWithKey(ctx context.Context, additionalKey string, fn func() error) error {
 	// Acquire transaction
-	transactionID, err := rl.Acquire(ctx)
+	transactionID, err := rl.AcquireWithKey(ctx, additionalKey)
 	if err != nil {
 		return fmt.Errorf("failed to acquire rate limiter: %w", err)
 	}
 
 	// Ensure transaction is released
 	defer func() {
-		if err := rl.Release(ctx, transactionID); err != nil {
+		if err := rl.ReleaseWithKey(ctx, transactionID, additionalKey); err != nil {
 			// Log error but don't fail the function
 			// In a real implementation, you might want to use a logger here
 		}
