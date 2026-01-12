@@ -60,6 +60,10 @@ type RateLimiterOptions struct {
 	MaxTransactionsPerSecond int
 	// MaxTransactionsPerMinute is the maximum number of transactions per minute (optional)
 	MaxTransactionsPerMinute int
+	// MaxTransactionsPerHour is the maximum number of transactions per hour (optional)
+	MaxTransactionsPerHour int
+	// MaxTransactionsPerDay is the maximum number of transactions per day (optional)
+	MaxTransactionsPerDay int
 	// WaitOnLimit indicates whether to wait when limit is reached (true) or return error immediately (false)
 	WaitOnLimit bool
 	// WaitTimeout is the maximum time to wait when WaitOnLimit is true
@@ -80,6 +84,8 @@ func NewRateLimiterOptions() *RateLimiterOptions {
 		MaxActiveTransactions:    0, // Unlimited by default
 		MaxTransactionsPerSecond: 0, // Unlimited by default
 		MaxTransactionsPerMinute: 0, // Unlimited by default
+		MaxTransactionsPerHour:   0, // Unlimited by default
+		MaxTransactionsPerDay:    0, // Unlimited by default
 		WaitOnLimit:              false,
 		WaitTimeout:              30 * time.Second,
 		RetryDelay:               100 * time.Millisecond,
@@ -113,6 +119,24 @@ func (rlo *RateLimiterOptions) WithMaxTransactionsPerMinute(max int) *RateLimite
 		panic(fmt.Sprintf("invalid max transactions per minute: %d, must be non-negative", max))
 	}
 	rlo.MaxTransactionsPerMinute = max
+	return rlo
+}
+
+// WithMaxTransactionsPerHour sets the maximum number of transactions per hour
+func (rlo *RateLimiterOptions) WithMaxTransactionsPerHour(max int) *RateLimiterOptions {
+	if max < 0 {
+		panic(fmt.Sprintf("invalid max transactions per hour: %d, must be non-negative", max))
+	}
+	rlo.MaxTransactionsPerHour = max
+	return rlo
+}
+
+// WithMaxTransactionsPerDay sets the maximum number of transactions per day
+func (rlo *RateLimiterOptions) WithMaxTransactionsPerDay(max int) *RateLimiterOptions {
+	if max < 0 {
+		panic(fmt.Sprintf("invalid max transactions per day: %d, must be non-negative", max))
+	}
+	rlo.MaxTransactionsPerDay = max
 	return rlo
 }
 
@@ -163,8 +187,9 @@ func (rlo *RateLimiterOptions) WithTransactionTTL(ttl time.Duration) *RateLimite
 
 // Validate validates the rate limiter options
 func (rlo *RateLimiterOptions) Validate() error {
-	if rlo.MaxActiveTransactions == 0 && rlo.MaxTransactionsPerSecond == 0 && rlo.MaxTransactionsPerMinute == 0 {
-		return fmt.Errorf("at least one limit must be configured (MaxActiveTransactions, MaxTransactionsPerSecond, or MaxTransactionsPerMinute)")
+	if rlo.MaxActiveTransactions == 0 && rlo.MaxTransactionsPerSecond == 0 && rlo.MaxTransactionsPerMinute == 0 &&
+		rlo.MaxTransactionsPerHour == 0 && rlo.MaxTransactionsPerDay == 0 {
+		return fmt.Errorf("at least one limit must be configured (MaxActiveTransactions, MaxTransactionsPerSecond, MaxTransactionsPerMinute, MaxTransactionsPerHour, or MaxTransactionsPerDay)")
 	}
 	return nil
 }
@@ -183,6 +208,8 @@ type RateLimiter struct {
 	activeKeyName string
 	tpsKeyName    string
 	tpmKeyName    string
+	tphKeyName    string
+	tpdKeyName    string
 }
 
 // NewRateLimiter creates a new distributed rate limiter
@@ -205,6 +232,8 @@ func NewRateLimiter(client *Client, key string, opts *RateLimiterOptions) (*Rate
 	limiter.activeKeyName = limiter.buildKey("active")
 	limiter.tpsKeyName = limiter.buildKey("tps")
 	limiter.tpmKeyName = limiter.buildKey("tpm")
+	limiter.tphKeyName = limiter.buildKey("tph")
+	limiter.tpdKeyName = limiter.buildKey("tpd")
 
 	// Register rate limiter if it has a cache name
 	if opts.CacheName != "" {
@@ -234,6 +263,24 @@ func (rl *RateLimiter) buildKeyWithSuffix(suffix string, additionalKey string) s
 	return baseKey + "::" + suffix
 }
 
+// getKeyNames returns the key names for the given additional key
+func (rl *RateLimiter) getKeyNames(additionalKey string) (activeKey, tpsKey, tpmKey, tphKey, tpdKey string) {
+	if additionalKey != "" {
+		activeKey = rl.buildKeyWithSuffix("active", additionalKey)
+		tpsKey = rl.buildKeyWithSuffix("tps", additionalKey)
+		tpmKey = rl.buildKeyWithSuffix("tpm", additionalKey)
+		tphKey = rl.buildKeyWithSuffix("tph", additionalKey)
+		tpdKey = rl.buildKeyWithSuffix("tpd", additionalKey)
+	} else {
+		activeKey = rl.activeKeyName
+		tpsKey = rl.tpsKeyName
+		tpmKey = rl.tpmKeyName
+		tphKey = rl.tphKeyName
+		tpdKey = rl.tpdKeyName
+	}
+	return
+}
+
 // Acquire attempts to acquire a transaction slot
 func (rl *RateLimiter) Acquire(ctx context.Context) (string, error) {
 	return rl.AcquireWithKey(ctx, "")
@@ -253,15 +300,8 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey strin
 	// Check all limits using Lua script for atomicity
 	script := rl.buildAcquireScript()
 
-	// Build dynamic key names if additional key is provided
-	activeKey := rl.activeKeyName
-	tpsKey := rl.tpsKeyName
-	tpmKey := rl.tpmKeyName
-	if additionalKey != "" {
-		activeKey = rl.buildKeyWithSuffix("active", additionalKey)
-		tpsKey = rl.buildKeyWithSuffix("tps", additionalKey)
-		tpmKey = rl.buildKeyWithSuffix("tpm", additionalKey)
-	}
+	// Get key names (dynamic if additional key is provided)
+	activeKey, tpsKey, tpmKey, tphKey, tpdKey := rl.getKeyNames(additionalKey)
 
 	now := time.Now()
 	transactionID := fmt.Sprintf("%d", now.UnixNano())
@@ -270,10 +310,14 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey strin
 		activeKey,
 		tpsKey,
 		tpmKey,
+		tphKey,
+		tpdKey,
 	},
 		rl.opts.MaxActiveTransactions,
 		rl.opts.MaxTransactionsPerSecond,
 		rl.opts.MaxTransactionsPerMinute,
+		rl.opts.MaxTransactionsPerHour,
+		rl.opts.MaxTransactionsPerDay,
 		transactionID,
 		now.Unix(),
 		now.UnixNano(),
@@ -284,7 +328,7 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey strin
 		return "", fmt.Errorf("failed to acquire rate limiter: %w", err)
 	}
 
-	// Result: 1 = success, 0 = active limit, -1 = TPS limit, -2 = TPM limit
+	// Result: 1 = success, 0 = active limit, -1 = TPS limit, -2 = TPM limit, -3 = TPH limit, -4 = TPD limit
 	resultCode := result.(int64)
 	if resultCode == 1 {
 		rl.transactionID = transactionID
@@ -298,6 +342,10 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey strin
 		return "", fmt.Errorf("transactions per second limit reached (%d TPS)", rl.opts.MaxTransactionsPerSecond)
 	case -2:
 		return "", fmt.Errorf("transactions per minute limit reached (%d TPM)", rl.opts.MaxTransactionsPerMinute)
+	case -3:
+		return "", fmt.Errorf("transactions per hour limit reached (%d TPH)", rl.opts.MaxTransactionsPerHour)
+	case -4:
+		return "", fmt.Errorf("transactions per day limit reached (%d TPD)", rl.opts.MaxTransactionsPerDay)
 	default:
 		return "", fmt.Errorf("unknown error code: %d", resultCode)
 	}
@@ -334,14 +382,18 @@ func (rl *RateLimiter) buildAcquireScript() string {
 		local active_key = KEYS[1]
 		local tps_key = KEYS[2]
 		local tpm_key = KEYS[3]
+		local tph_key = KEYS[4]
+		local tpd_key = KEYS[5]
 		
 		local max_active = tonumber(ARGV[1])
 		local max_tps = tonumber(ARGV[2])
 		local max_tpm = tonumber(ARGV[3])
-		local transaction_id = ARGV[4]
-		local now_seconds = tonumber(ARGV[5])
-		local now_nanos = tonumber(ARGV[6])
-		local transaction_ttl = tonumber(ARGV[7])
+		local max_tph = tonumber(ARGV[4])
+		local max_tpd = tonumber(ARGV[5])
+		local transaction_id = ARGV[6]
+		local now_seconds = tonumber(ARGV[7])
+		local now_nanos = tonumber(ARGV[8])
+		local transaction_ttl = tonumber(ARGV[9])
 		
 		-- Check active transactions limit
 		if max_active > 0 then
@@ -377,6 +429,32 @@ func (rl *RateLimiter) buildAcquireScript() string {
 			end
 		end
 		
+		-- Check TPH limit (sliding window of 3600 seconds = 1 hour)
+		if max_tph > 0 then
+			-- Remove old entries (older than 3600 seconds)
+			local tph_cutoff_time = now_nanos - (3600 * 1000000000)
+			redis.call("ZREMRANGEBYSCORE", tph_key, "-inf", tph_cutoff_time)
+			
+			-- Count entries in the last hour
+			local tph_count = redis.call("ZCOUNT", tph_key, tph_cutoff_time, "+inf")
+			if tph_count >= max_tph then
+				return -3
+			end
+		end
+		
+		-- Check TPD limit (sliding window of 86400 seconds = 1 day)
+		if max_tpd > 0 then
+			-- Remove old entries (older than 86400 seconds)
+			local tpd_cutoff_time = now_nanos - (86400 * 1000000000)
+			redis.call("ZREMRANGEBYSCORE", tpd_key, "-inf", tpd_cutoff_time)
+			
+			-- Count entries in the last day
+			local tpd_count = redis.call("ZCOUNT", tpd_key, tpd_cutoff_time, "+inf")
+			if tpd_count >= max_tpd then
+				return -4
+			end
+		end
+		
 		-- All checks passed, acquire the transaction
 		
 		-- Increment active transactions
@@ -395,6 +473,18 @@ func (rl *RateLimiter) buildAcquireScript() string {
 		if max_tpm > 0 then
 			redis.call("ZADD", tpm_key, now_nanos, transaction_id)
 			redis.call("EXPIRE", tpm_key, 60)
+		end
+		
+		-- Add to TPH sorted set (sliding window)
+		if max_tph > 0 then
+			redis.call("ZADD", tph_key, now_nanos, transaction_id)
+			redis.call("EXPIRE", tph_key, 3600)
+		end
+		
+		-- Add to TPD sorted set (sliding window)
+		if max_tpd > 0 then
+			redis.call("ZADD", tpd_key, now_nanos, transaction_id)
+			redis.call("EXPIRE", tpd_key, 86400)
 		end
 		
 		return 1
@@ -489,6 +579,40 @@ func (rl *RateLimiter) GetMetrics(ctx context.Context) (RateLimiterMetrics, erro
 		metrics["tpm_utilization"] = fmt.Sprintf("%.1f%%", utilization)
 	}
 
+	// Get TPH count (sliding window of 3600 seconds = 1 hour)
+	if rl.opts.MaxTransactionsPerHour > 0 {
+		// Count entries in the last hour
+		tphCutoffTime := now.Add(-3600 * time.Second).UnixNano()
+
+		tphCount, err := rl.client.GetClient().ZCount(ctx, rl.tphKeyName,
+			strconv.FormatInt(tphCutoffTime, 10),
+			"+inf").Result()
+		if err != nil {
+			tphCount = 0
+		}
+		metrics["transactions_per_hour"] = strconv.FormatInt(tphCount, 10)
+		metrics["max_transactions_per_hour"] = strconv.Itoa(rl.opts.MaxTransactionsPerHour)
+		utilization := float64(tphCount) / float64(rl.opts.MaxTransactionsPerHour) * 100
+		metrics["tph_utilization"] = fmt.Sprintf("%.1f%%", utilization)
+	}
+
+	// Get TPD count (sliding window of 86400 seconds = 1 day)
+	if rl.opts.MaxTransactionsPerDay > 0 {
+		// Count entries in the last day
+		tpdCutoffTime := now.Add(-86400 * time.Second).UnixNano()
+
+		tpdCount, err := rl.client.GetClient().ZCount(ctx, rl.tpdKeyName,
+			strconv.FormatInt(tpdCutoffTime, 10),
+			"+inf").Result()
+		if err != nil {
+			tpdCount = 0
+		}
+		metrics["transactions_per_day"] = strconv.FormatInt(tpdCount, 10)
+		metrics["max_transactions_per_day"] = strconv.Itoa(rl.opts.MaxTransactionsPerDay)
+		utilization := float64(tpdCount) / float64(rl.opts.MaxTransactionsPerDay) * 100
+		metrics["tpd_utilization"] = fmt.Sprintf("%.1f%%", utilization)
+	}
+
 	return metrics, nil
 }
 
@@ -504,7 +628,7 @@ func (rl *RateLimiter) GetKey() string {
 
 // Cleanup removes all keys associated with this rate limiter
 func (rl *RateLimiter) Cleanup(ctx context.Context) error {
-	keys := []string{rl.activeKeyName, rl.tpsKeyName, rl.tpmKeyName}
+	keys := []string{rl.activeKeyName, rl.tpsKeyName, rl.tpmKeyName, rl.tphKeyName, rl.tpdKeyName}
 	err := rl.client.Delete(ctx, keys...)
 
 	// Unregister from registry
