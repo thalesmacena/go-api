@@ -12,6 +12,8 @@ import (
 	"go-api/pkg/log"
 	"strconv"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 type weatherUseCase struct {
@@ -192,6 +194,97 @@ func (uc *weatherUseCase) UpdateAllCitiesMonitoring() {
 	}
 
 	log.Infof("Completed batch enqueuing all cities. Total pages processed: %d", page)
+}
+
+// UpdateAllCitiesMonitoringScheduled enqueues all cities for update monitoring
+func (uc *weatherUseCase) UpdateAllCitiesMonitoringScheduled(requestID string) error {
+	log.Info("Starting scheduled city monitoring update with key-set pagination", zap.String("request_id", requestID))
+
+	var lastID string
+	totalProcessed := 0
+	totalEnqueued := 0
+	totalFailed := 0
+
+	for {
+		// Get cities using key-set pagination
+		cities, err := uc.dbGateway.FindAllWithKeysetPagination(lastID, uc.batchSize)
+		if err != nil {
+			log.Error("Failed to fetch cities with key-set pagination",
+				zap.String("request_id", requestID),
+				zap.String("last_id", lastID),
+				zap.Error(err))
+			return fmt.Errorf("failed to fetch cities with key-set pagination (lastID: %s): %w", lastID, err)
+		}
+
+		// If no cities found, we're done
+		if len(cities) == 0 {
+			log.Info("No more cities to process", zap.String("request_id", requestID))
+			break
+		}
+
+		totalProcessed += len(cities)
+		log.Info("Processing batch",
+			zap.String("request_id", requestID),
+			zap.Int("batch_size", len(cities)),
+			zap.String("last_id", lastID))
+
+		// Prepare batch messages
+		messages := make([]queue.BatchMessage, len(cities))
+		for i, city := range cities {
+			messages[i] = queue.BatchMessage{
+				MessageID: fmt.Sprintf("scheduled-%s-city-%s", requestID, city.ID),
+				Body:      city,
+			}
+		}
+
+		// Send batch
+		result, err := uc.queueSender.SendMessageBatch(uc.queueName, messages)
+		if err != nil {
+			log.Warn("Failed to send batch",
+				zap.String("request_id", requestID),
+				zap.String("starting_city_id", lastID),
+				zap.Error(err))
+			// Log all cities in this batch as failed
+			for _, city := range cities {
+				log.Warn("Failed to enqueue city",
+					zap.String("request_id", requestID),
+					zap.String("city_name", city.Name),
+					zap.String("city_id", city.ID),
+					zap.String("state", city.State))
+			}
+			totalFailed += len(cities)
+		} else {
+			// Log individual failed cities
+			for _, failedID := range result.Failed {
+				for _, city := range cities {
+					if fmt.Sprintf("scheduled-%s-city-%s", requestID, city.ID) == failedID {
+						log.Warn("Failed to enqueue city",
+							zap.String("request_id", requestID),
+							zap.String("city_name", city.Name),
+							zap.String("city_id", city.ID),
+							zap.String("state", city.State))
+						totalFailed++
+						break
+					}
+				}
+			}
+			totalEnqueued += len(result.Successful)
+			log.Info("Batch processed",
+				zap.String("request_id", requestID),
+				zap.Int("enqueued", len(result.Successful)),
+				zap.Int("failed", len(result.Failed)))
+		}
+
+		// Update lastID for next iteration (use the last city's ID from this batch)
+		lastID = cities[len(cities)-1].ID
+	}
+
+	log.Info("Completed scheduled city monitoring update",
+		zap.String("request_id", requestID),
+		zap.Int("total_processed", totalProcessed),
+		zap.Int("total_enqueued", totalEnqueued),
+		zap.Int("total_failed", totalFailed))
+	return nil
 }
 
 // UpdateCityMonitoring updates weather and wave conditions for a city in parallel

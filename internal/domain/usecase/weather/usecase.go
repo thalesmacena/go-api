@@ -18,6 +18,9 @@ type UseCase interface {
 	// UpdateAllCitiesMonitoring enqueues all cities in batches using pagination
 	UpdateAllCitiesMonitoring()
 
+	// UpdateAllCitiesMonitoringScheduled enqueues all cities for update monitoring
+	UpdateAllCitiesMonitoringScheduled(requestID string) error
+
 	// UpdateCityMonitoring updates weather and wave conditions for a city in parallel
 	UpdateCityMonitoring(city entity.City) error
 
