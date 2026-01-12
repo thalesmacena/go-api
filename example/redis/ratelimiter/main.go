@@ -103,6 +103,18 @@ func main() {
 	fmt.Println("\n=== Scenario: WithTransaction With Optional Key ===")
 	exampleScenarioWithTransactionWithKey(ctx, client)
 
+	// Example Scenario: Max transactions per hour (TPH)
+	fmt.Println("\n=== Scenario: Max Transactions Per Hour (TPH) ===")
+	exampleScenarioMaxTPH(ctx, client)
+
+	// Example Scenario: Max transactions per day (TPD)
+	fmt.Println("\n=== Scenario: Max Transactions Per Day (TPD) ===")
+	exampleScenarioMaxTPD(ctx, client)
+
+	// Example Scenario: Combined TPH and TPD limits
+	fmt.Println("\n=== Scenario: Combined TPH and TPD Limits ===")
+	exampleScenarioTPHandTPD(ctx, client)
+
 	fmt.Println("\n All distributed rate limiter scenarios completed successfully!")
 }
 
@@ -862,6 +874,20 @@ func printMetrics(metrics redis.RateLimiterMetrics) {
 			metrics["max_transactions_per_minute"],
 			metrics["tpm_utilization"])
 	}
+
+	if tph, ok := metrics["transactions_per_hour"]; ok {
+		fmt.Printf("  TPH: %s/%s (%s utilization)\n",
+			tph,
+			metrics["max_transactions_per_hour"],
+			metrics["tph_utilization"])
+	}
+
+	if tpd, ok := metrics["transactions_per_day"]; ok {
+		fmt.Printf("  TPD: %s/%s (%s utilization)\n",
+			tpd,
+			metrics["max_transactions_per_day"],
+			metrics["tpd_utilization"])
+	}
 }
 
 // contains checks if a string contains a substring
@@ -1057,4 +1083,241 @@ func exampleScenarioWithTransactionWithKey(ctx context.Context, client *redis.Cl
 
 	wg.Wait()
 	fmt.Println("\nWithTransactionWithKey scenario completed - each resource had independent rate limits!")
+}
+
+// exampleScenarioMaxTPH demonstrates rate limiting with max transactions per hour
+func exampleScenarioMaxTPH(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing with max 100 transactions per hour...")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxTransactionsPerHour(100).
+		WithWaitOnLimit(false).
+		WithNamespace("tph_limit").
+		WithCacheName("tph_test")
+
+	limiter, err := redis.NewRateLimiter(client, "tph_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	successCount := 0
+	failureCount := 0
+	var mu sync.Mutex
+
+	// Send 150 requests over 2 minutes (1 request every 800ms)
+	fmt.Println("Sending 150 requests over 2 minutes (1 every 800ms)...")
+	startTime := time.Now()
+
+	for i := range 150 {
+		wg.Add(1)
+		go func(requestID int) {
+			defer wg.Done()
+
+			_, err := limiter.Acquire(ctx)
+			elapsed := time.Since(startTime)
+
+			if err != nil {
+				mu.Lock()
+				failureCount++
+				mu.Unlock()
+				fmt.Printf("Request %03d [%3ds]:  Rejected (TPH limit)\n", requestID, int(elapsed.Seconds()))
+				return
+			}
+
+			mu.Lock()
+			successCount++
+			mu.Unlock()
+			fmt.Printf("Request %03d [%3ds]:  Accepted\n", requestID, int(elapsed.Seconds()))
+
+			// No Release - testing TPH only, not active transactions
+		}(i + 1)
+
+		// Show metrics at specific intervals
+		if (i+1)%30 == 0 {
+			time.Sleep(100 * time.Millisecond)
+			showMetrics(ctx, limiter, fmt.Sprintf("After %d requests", i+1))
+		}
+
+		// Wait 800ms before next request
+		time.Sleep(800 * time.Millisecond)
+	}
+
+	wg.Wait()
+
+	totalElapsed := time.Since(startTime)
+	fmt.Printf("\nResults: %d accepted, %d rejected (limit: 100 TPH)\n", successCount, failureCount)
+	fmt.Printf("Total time: %v\n", totalElapsed)
+	showMetrics(ctx, limiter, "After All Requests")
+}
+
+// exampleScenarioMaxTPD demonstrates rate limiting with max transactions per day
+func exampleScenarioMaxTPD(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing with max 500 transactions per day...")
+	fmt.Println("Note: This is a demonstration. In a real scenario, TPD limits would be tested over 24 hours.")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxTransactionsPerDay(500).
+		WithWaitOnLimit(false).
+		WithNamespace("tpd_limit").
+		WithCacheName("tpd_test")
+
+	limiter, err := redis.NewRateLimiter(client, "tpd_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	successCount := 0
+	failureCount := 0
+	var mu sync.Mutex
+
+	// Send 600 requests over 5 minutes (1 request every 500ms)
+	// This simulates what would happen if we sent requests faster than the daily limit
+	fmt.Println("Sending 600 requests over 5 minutes (1 every 500ms)...")
+	fmt.Println("(Simulating a scenario where daily limit would be reached)")
+	startTime := time.Now()
+
+	for i := range 600 {
+		wg.Add(1)
+		go func(requestID int) {
+			defer wg.Done()
+
+			_, err := limiter.Acquire(ctx)
+			elapsed := time.Since(startTime)
+
+			if err != nil {
+				mu.Lock()
+				failureCount++
+				mu.Unlock()
+				if (requestID+1)%50 == 0 {
+					fmt.Printf("Request %03d [%3ds]:  Rejected (TPD limit)\n", requestID, int(elapsed.Seconds()))
+				}
+				return
+			}
+
+			mu.Lock()
+			successCount++
+			mu.Unlock()
+			if (requestID+1)%50 == 0 {
+				fmt.Printf("Request %03d [%3ds]:  Accepted\n", requestID, int(elapsed.Seconds()))
+			}
+
+			// No Release - testing TPD only, not active transactions
+		}(i)
+
+		// Show metrics at specific intervals
+		if (i+1)%100 == 0 {
+			time.Sleep(100 * time.Millisecond)
+			showMetrics(ctx, limiter, fmt.Sprintf("After %d requests", i+1))
+		}
+
+		// Wait 500ms before next request
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	wg.Wait()
+
+	totalElapsed := time.Since(startTime)
+	fmt.Printf("\nResults: %d accepted, %d rejected (limit: 500 TPD)\n", successCount, failureCount)
+	fmt.Printf("Total time: %v\n", totalElapsed)
+	showMetrics(ctx, limiter, "After All Requests")
+	fmt.Println("\nNote: In a real-world scenario, TPD limits are typically enforced over a 24-hour period.")
+}
+
+// exampleScenarioTPHandTPD demonstrates TPH and TPD limits working together
+func exampleScenarioTPHandTPD(ctx context.Context, client *redis.Client) {
+	fmt.Println("Testing with combined TPH and TPD limits: 200 TPH, 1000 TPD...")
+	fmt.Println("Sending 300 requests over 3 minutes (1 every 600ms)")
+
+	opts := redis.NewRateLimiterOptions().
+		WithMaxTransactionsPerHour(200).
+		WithMaxTransactionsPerDay(1000).
+		WithWaitOnLimit(false).
+		WithNamespace("tph_tpd_combined").
+		WithCacheName("tph_tpd_test")
+
+	limiter, err := redis.NewRateLimiter(client, "tph_tpd_endpoint", opts)
+	if err != nil {
+		fmt.Printf("Failed to create rate limiter: %v\n", err)
+		return
+	}
+	defer limiter.Cleanup(ctx)
+
+	var wg sync.WaitGroup
+	stats := struct {
+		total   int
+		success int
+		tph     int
+		tpd     int
+		mu      sync.Mutex
+	}{}
+
+	startTime := time.Now()
+
+	// Send 300 requests over 3 minutes (1 every 600ms)
+	for i := range 300 {
+		wg.Add(1)
+		go func(requestID int) {
+			defer wg.Done()
+
+			elapsed := time.Since(startTime)
+
+			stats.mu.Lock()
+			stats.total++
+			stats.mu.Unlock()
+
+			_, err := limiter.Acquire(ctx)
+			if err != nil {
+				errMsg := err.Error()
+				stats.mu.Lock()
+				if contains(errMsg, "per hour") {
+					stats.tph++
+					if (requestID+1)%30 == 0 {
+						fmt.Printf("Request %03d [%3ds]:  Rejected (TPH limit)\n", requestID, int(elapsed.Seconds()))
+					}
+				} else if contains(errMsg, "per day") {
+					stats.tpd++
+					if (requestID+1)%30 == 0 {
+						fmt.Printf("Request %03d [%3ds]:  Rejected (TPD limit)\n", requestID, int(elapsed.Seconds()))
+					}
+				}
+				stats.mu.Unlock()
+				return
+			}
+
+			stats.mu.Lock()
+			stats.success++
+			stats.mu.Unlock()
+			if (requestID+1)%30 == 0 {
+				fmt.Printf("Request %03d [%3ds]:  Accepted\n", requestID, int(elapsed.Seconds()))
+			}
+
+			// No Release - testing only TPH and TPD without Active limit
+		}(i + 1)
+
+		// Show metrics at intervals (every 60 requests = every 36 seconds)
+		if (i+1)%60 == 0 {
+			time.Sleep(50 * time.Millisecond)
+			showMetrics(ctx, limiter, fmt.Sprintf("After %d requests (~%ds)", i+1, int(time.Since(startTime).Seconds())))
+		}
+
+		// Wait 600ms before next request
+		time.Sleep(600 * time.Millisecond)
+	}
+
+	wg.Wait()
+
+	totalElapsed := time.Since(startTime)
+	fmt.Printf("\n=== RESULTS SUMMARY ===\n")
+	fmt.Printf("Total duration: %v\n", totalElapsed)
+	fmt.Printf("Total requests: %d\n", stats.total)
+	fmt.Printf("Successful: %d\n", stats.success)
+	fmt.Printf("Rejected by TPH limit: %d\n", stats.tph)
+	fmt.Printf("Rejected by TPD limit: %d\n", stats.tpd)
+	showMetrics(ctx, limiter, "Final State")
 }
