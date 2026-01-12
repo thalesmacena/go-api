@@ -31,7 +31,7 @@ type LogLevel int
 
 const (
 	// Silent disables all logs
-	Silent LogLevel = iota
+	Silent LogLevel = iota + 1
 	// ErrorLevel logs only errors
 	ErrorLevel
 	// InfoLevel logs informational and error messages
@@ -191,7 +191,9 @@ func NewSubscriber(client *redis.Client, handler MessageHandler, config *PubSubC
 		if config.PoolSize != 0 {
 			poolSize = config.PoolSize
 		}
-		logLevel = config.LogLevel
+		if config.LogLevel != 0 {
+			logLevel = config.LogLevel
+		}
 		if config.ReconnectDelay != 0 {
 			reconnectDelay = config.ReconnectDelay
 		}

@@ -33,7 +33,7 @@ type LogLevel int
 
 const (
 	// Silent disables all logs
-	Silent LogLevel = iota
+	Silent LogLevel = iota + 1
 	// ErrorLevel logs only errors
 	ErrorLevel
 	// InfoLevel logs informational and error messages
@@ -117,7 +117,9 @@ func NewWorker(sqsClient SQSWorkerClient, queueName string, handler Handler, con
 		if config.PoolSize != 0 {
 			poolSize = config.PoolSize
 		}
-		logLevel = config.LogLevel
+		if config.LogLevel != 0 {
+			logLevel = config.LogLevel
+		}
 	}
 
 	if maxMessages < 1 || maxMessages > 10 {
