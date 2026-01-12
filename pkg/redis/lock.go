@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -515,5 +516,5 @@ func GetLockStatus() map[string]bool {
 
 // generateLockValue generates a unique value for the lock
 func generateLockValue() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }

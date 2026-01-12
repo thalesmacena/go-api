@@ -304,7 +304,7 @@ func (rl *RateLimiter) acquireImmediate(ctx context.Context, additionalKey strin
 	activeKey, tpsKey, tpmKey, tphKey, tpdKey := rl.getKeyNames(additionalKey)
 
 	now := time.Now()
-	transactionID := fmt.Sprintf("%d", now.UnixNano())
+	transactionID := strconv.FormatInt(now.UnixNano(), 10)
 
 	result, err := rl.client.GetClient().Eval(ctx, script, []string{
 		activeKey,

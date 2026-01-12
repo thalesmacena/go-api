@@ -3,6 +3,7 @@ package msg
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"github.com/spf13/viper"
 	"log"
 	"os"
@@ -66,7 +67,7 @@ func GetMessage(key string, args ...interface{}) string {
 		var argStr string
 
 		if isPrimitive(arg) {
-			argStr = fmt.Sprint(arg)
+			argStr = primitiveToString(arg)
 		} else {
 			jsonBytes, err := json.Marshal(arg)
 			if err != nil {
@@ -93,5 +94,45 @@ func isPrimitive(value interface{}) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// primitiveToString converts a primitive value to string using strconv for better performance
+func primitiveToString(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+
+	switch v := value.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case uint:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("%v", value)
 	}
 }

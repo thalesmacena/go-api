@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -482,14 +483,14 @@ func (s *Subscriber) HealthCheck() SubscriberHealthCheck {
 	}
 
 	details := map[string]string{
-		"pool_size":              fmt.Sprintf("%d", s.poolSize),
+		"pool_size":              strconv.Itoa(s.poolSize),
 		"log_level":              s.getLogLevelString(),
 		"reconnect_delay":        s.reconnectDelay.String(),
-		"max_reconnect_attempts": fmt.Sprintf("%d", s.maxReconnectAttempts),
-		"is_running":             fmt.Sprintf("%t", isRunning),
-		"messages_processed":     fmt.Sprintf("%d", messagesProcessed),
-		"reconnect_attempts":     fmt.Sprintf("%d", reconnectAttempts),
-		"redis_available":        fmt.Sprintf("%t", redisAvailable),
+		"max_reconnect_attempts": strconv.Itoa(s.maxReconnectAttempts),
+		"is_running":             strconv.FormatBool(isRunning),
+		"messages_processed":     strconv.FormatInt(messagesProcessed, 10),
+		"reconnect_attempts":     strconv.FormatInt(int64(reconnectAttempts), 10),
+		"redis_available":        strconv.FormatBool(redisAvailable),
 		"channels":               fmt.Sprintf("%v", s.channels),
 		"patterns":               fmt.Sprintf("%v", s.patterns),
 	}
