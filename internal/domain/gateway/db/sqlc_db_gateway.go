@@ -11,6 +11,8 @@ type SQLCHealthDBGateway struct {
 	DB *sql.DB
 }
 
+var _ HealthDBGateway = (*SQLCHealthDBGateway)(nil)
+
 func NewSQLCHealthDBGateway(db *sql.DB) *SQLCHealthDBGateway {
 	return &SQLCHealthDBGateway{DB: db}
 }

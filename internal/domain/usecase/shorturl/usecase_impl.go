@@ -16,6 +16,8 @@ type shortUrlUseCase struct {
 	gateway db.ShortUrlGateway
 }
 
+var _ UseCase = (*shortUrlUseCase)(nil)
+
 func NewShortUrlUseCase(gateway db.ShortUrlGateway) UseCase {
 	return &shortUrlUseCase{
 		gateway: gateway,

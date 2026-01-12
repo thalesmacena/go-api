@@ -16,6 +16,8 @@ import (
 // HandlerFunc defines a function that handles a SQS Message
 type HandlerFunc func(msg *types.Message) error
 
+var _ Handler = HandlerFunc(nil)
+
 // HandleMessage implements the Handler interface for HandlerFunc
 func (f HandlerFunc) HandleMessage(msg *types.Message) error {
 	return f(msg)

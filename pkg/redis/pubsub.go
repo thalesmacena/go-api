@@ -19,6 +19,8 @@ type MessageHandler interface {
 // HandlerFunc defines a function that handles Redis pub/sub messages
 type HandlerFunc func(ctx context.Context, channel string, message string) error
 
+var _ MessageHandler = HandlerFunc(nil)
+
 // HandleMessage implements the MessageHandler interface for HandlerFunc
 func (f HandlerFunc) HandleMessage(ctx context.Context, channel string, message string) error {
 	return f(ctx, channel, message)
