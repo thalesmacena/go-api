@@ -100,7 +100,7 @@ func (s *Sender) SendMessageBatch(queueName string, messages []BatchMessage) (*B
 	}
 
 	// Channel to collect results from parallel batch sends
-	resultChan := make(chan *BatchResult, len(batches))
+	resultChan := make(chan *BatchResult)
 	var wg sync.WaitGroup
 
 	// Send all batches in parallel
@@ -127,9 +127,11 @@ func (s *Sender) SendMessageBatch(queueName string, messages []BatchMessage) (*B
 		}(batch)
 	}
 
-	// Wait for all goroutines to complete
-	wg.Wait()
-	close(resultChan)
+	// Close channel after all goroutines complete
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
 
 	// Collect all results
 	finalResult := &BatchResult{
