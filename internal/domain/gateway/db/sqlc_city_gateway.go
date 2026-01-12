@@ -27,6 +27,70 @@ func (gateway *SQLCCityGateway) FindAll(page int, size int) ([]entity.City, erro
 	return gateway.FindAllWithFilters(page, size, "", "", "")
 }
 
+// FindAllWithKeysetPagination retrieves cities using key-set pagination by ID
+func (gateway *SQLCCityGateway) FindAllWithKeysetPagination(lastID string, size int) ([]entity.City, error) {
+	query := `
+		SELECT c.id, c.name, c.code, c.state, c.created_at, c.updated_at
+		FROM cities c
+		WHERE 1=1`
+
+	args := []interface{}{}
+	argCount := 0
+
+	if lastID != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.id > $%d", argCount)
+		args = append(args, lastID)
+	}
+
+	query += " ORDER BY c.id ASC"
+
+	argCount++
+	query += fmt.Sprintf(" LIMIT $%d", argCount)
+	args = append(args, size)
+
+	rows, err := gateway.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cities := make([]entity.City, 0)
+	for rows.Next() {
+		var city entity.City
+		if err := rows.Scan(&city.ID, &city.Name, &city.Code, &city.State, &city.CreatedAt, &city.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		var weatherErr, waveErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			weatherErr = gateway.loadWeatherForecasts(&city, "")
+		}()
+
+		go func() {
+			defer wg.Done()
+			waveErr = gateway.loadWaveConditions(&city, "")
+		}()
+
+		wg.Wait()
+
+		if weatherErr != nil {
+			return nil, weatherErr
+		}
+		if waveErr != nil {
+			return nil, waveErr
+		}
+
+		cities = append(cities, city)
+	}
+
+	return cities, nil
+}
+
 // FindAllWithFilters retrieves cities with filters and pagination
 func (gateway *SQLCCityGateway) FindAllWithFilters(page int, size int, namePrefix string, state string, fromDate string) ([]entity.City, error) {
 	// Ensure page is not negative (0-based pagination)

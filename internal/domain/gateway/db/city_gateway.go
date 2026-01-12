@@ -8,6 +8,7 @@ type CityGateway interface {
 	// City CRUD operations
 	FindAll(page int, size int) ([]entity.City, error)
 	FindAllWithFilters(page int, size int, namePrefix string, state string, fromDate string) ([]entity.City, error)
+	FindAllWithKeysetPagination(lastID string, size int) ([]entity.City, error)
 	CountAll() (int64, error)
 	CountWithFilters(namePrefix string, state string, fromDate string) (int64, error)
 	FindByID(id string) (*entity.City, error)
