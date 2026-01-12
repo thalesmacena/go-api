@@ -42,6 +42,7 @@ import (
 	"go-api/pkg/http"
 	"go-api/pkg/log"
 	"go-api/pkg/msg"
+	"go-api/pkg/redis"
 	"go-api/pkg/resource"
 	"go-api/pkg/sqs"
 )
@@ -66,6 +67,23 @@ func main() {
 
 	// Init Queue Health Gateway
 	queueHealthGateway := queue.NewQueueHealthGateway()
+
+	// Init Redis Client
+	redisConfig := redis.NewRedisConfig().
+		WithHost(resource.GetString("app.cache.redis.host")).
+		WithPort(resource.GetInt("app.cache.redis.port")).
+		WithPassword(resource.GetString("app.cache.redis.password")).
+		WithDatabase(resource.GetInt("app.cache.redis.db")).
+		WithMinIdleConns(resource.GetInt("app.cache.redis.pool.min-idle-conns")).
+		WithMaxIdleConns(resource.GetInt("app.cache.redis.pool.max-idle-conns")).
+		WithMaxActive(resource.GetInt("app.cache.redis.pool.max-active"))
+
+	redisClient := redis.NewClient(redisConfig)
+	defer func(client *redis.Client) {
+		if err := client.Close(); err != nil {
+			log.Errorf("Error closing Redis client: %v", err)
+		}
+	}(redisClient)
 
 	// Init External API Gateways
 	httpClientOptions := http.ClientOptions{
@@ -105,6 +123,18 @@ func main() {
 	// Init Schedule
 	shortUrlScheduler := schedule.NewShortUrlScheduler(shortUrlUseCase)
 	shortUrlScheduler.InitShortUrlScheduleTasks()
+
+	// Init Weather Schedule with distributed locking
+	weatherScheduler := schedule.NewWeatherScheduler(
+		weatherUseCase,
+		redisClient,
+		resource.GetString("weather.schedule.cron"),
+		resource.GetInt("weather.schedule.lock-ttl"),
+		resource.GetInt("weather.schedule.refresh-interval"),
+	)
+
+	// Initialize scheduler in background (goroutine handles lock acquisition)
+	weatherScheduler.InitWeatherScheduleTasks(context.Background())
 
 	// Init Weather Processor and Worker
 	weatherProcessor := processor.NewWeatherProcessor(weatherUseCase)
