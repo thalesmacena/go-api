@@ -10,6 +10,8 @@ type SQSSenderAdapter struct {
 	sqsSender *sqs.Sender
 }
 
+var _ queue.Sender = (*SQSSenderAdapter)(nil)
+
 // NewSQSSenderAdapter creates a new SQS sender adapter that implements domain interface
 func NewSQSSenderAdapter(sqsClient sqs.SQSClient) queue.Sender {
 	return &SQSSenderAdapter{

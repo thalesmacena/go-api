@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,8 @@ type MessageHandler interface {
 // HandlerFunc defines a function that handles Redis pub/sub messages
 type HandlerFunc func(ctx context.Context, channel string, message string) error
 
+var _ MessageHandler = HandlerFunc(nil)
+
 // HandleMessage implements the MessageHandler interface for HandlerFunc
 func (f HandlerFunc) HandleMessage(ctx context.Context, channel string, message string) error {
 	return f(ctx, channel, message)
@@ -29,7 +32,7 @@ type LogLevel int
 
 const (
 	// Silent disables all logs
-	Silent LogLevel = iota
+	Silent LogLevel = iota + 1
 	// ErrorLevel logs only errors
 	ErrorLevel
 	// InfoLevel logs informational and error messages
@@ -189,7 +192,9 @@ func NewSubscriber(client *redis.Client, handler MessageHandler, config *PubSubC
 		if config.PoolSize != 0 {
 			poolSize = config.PoolSize
 		}
-		logLevel = config.LogLevel
+		if config.LogLevel != 0 {
+			logLevel = config.LogLevel
+		}
 		if config.ReconnectDelay != 0 {
 			reconnectDelay = config.ReconnectDelay
 		}
@@ -478,14 +483,14 @@ func (s *Subscriber) HealthCheck() SubscriberHealthCheck {
 	}
 
 	details := map[string]string{
-		"pool_size":              fmt.Sprintf("%d", s.poolSize),
+		"pool_size":              strconv.Itoa(s.poolSize),
 		"log_level":              s.getLogLevelString(),
 		"reconnect_delay":        s.reconnectDelay.String(),
-		"max_reconnect_attempts": fmt.Sprintf("%d", s.maxReconnectAttempts),
-		"is_running":             fmt.Sprintf("%t", isRunning),
-		"messages_processed":     fmt.Sprintf("%d", messagesProcessed),
-		"reconnect_attempts":     fmt.Sprintf("%d", reconnectAttempts),
-		"redis_available":        fmt.Sprintf("%t", redisAvailable),
+		"max_reconnect_attempts": strconv.Itoa(s.maxReconnectAttempts),
+		"is_running":             strconv.FormatBool(isRunning),
+		"messages_processed":     strconv.FormatInt(messagesProcessed, 10),
+		"reconnect_attempts":     strconv.FormatInt(int64(reconnectAttempts), 10),
+		"redis_available":        strconv.FormatBool(redisAvailable),
 		"channels":               fmt.Sprintf("%v", s.channels),
 		"patterns":               fmt.Sprintf("%v", s.patterns),
 	}

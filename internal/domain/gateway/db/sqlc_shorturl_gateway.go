@@ -15,6 +15,8 @@ type SQLCShortUrlGateway struct {
 	DB *sql.DB
 }
 
+var _ ShortUrlGateway = (*SQLCShortUrlGateway)(nil)
+
 func NewSQLCShortUrlGateway(db *sql.DB) *SQLCShortUrlGateway {
 	return &SQLCShortUrlGateway{DB: db}
 }

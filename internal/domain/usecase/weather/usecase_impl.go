@@ -24,6 +24,8 @@ type weatherUseCase struct {
 	queueSender queue.Sender
 }
 
+var _ UseCase = (*weatherUseCase)(nil)
+
 func NewWeatherUseCase(queueName string, batchSize int, queueSender queue.Sender, apiGateway api.WeatherGateway, dbGateway db.CityGateway) UseCase {
 	return &weatherUseCase{
 		queueName:   queueName,

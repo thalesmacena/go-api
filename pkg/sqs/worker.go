@@ -16,6 +16,8 @@ import (
 // HandlerFunc defines a function that handles a SQS Message
 type HandlerFunc func(msg *types.Message) error
 
+var _ Handler = HandlerFunc(nil)
+
 // HandleMessage implements the Handler interface for HandlerFunc
 func (f HandlerFunc) HandleMessage(msg *types.Message) error {
 	return f(msg)
@@ -31,7 +33,7 @@ type LogLevel int
 
 const (
 	// Silent disables all logs
-	Silent LogLevel = iota
+	Silent LogLevel = iota + 1
 	// ErrorLevel logs only errors
 	ErrorLevel
 	// InfoLevel logs informational and error messages
@@ -115,7 +117,9 @@ func NewWorker(sqsClient SQSWorkerClient, queueName string, handler Handler, con
 		if config.PoolSize != 0 {
 			poolSize = config.PoolSize
 		}
-		logLevel = config.LogLevel
+		if config.LogLevel != 0 {
+			logLevel = config.LogLevel
+		}
 	}
 
 	if maxMessages < 1 || maxMessages > 10 {

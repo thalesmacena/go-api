@@ -11,6 +11,8 @@ type healthUseCase struct {
 	queueGateway queue.HealthGateway
 }
 
+var _ UseCase = (*healthUseCase)(nil)
+
 func NewHealthUseCase(dbGateway db.HealthDBGateway, queueGateway queue.HealthGateway) UseCase {
 	return &healthUseCase{
 		dbGateway:    dbGateway,

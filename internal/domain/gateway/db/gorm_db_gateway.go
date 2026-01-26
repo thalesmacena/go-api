@@ -9,6 +9,8 @@ type GormHealthDBGateway struct {
 	DB *gorm.DB
 }
 
+var _ HealthDBGateway = (*GormHealthDBGateway)(nil)
+
 func NewGormHealthDBGateway(db *gorm.DB) *GormHealthDBGateway {
 	return &GormHealthDBGateway{DB: db}
 }

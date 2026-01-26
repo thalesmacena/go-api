@@ -11,6 +11,8 @@ type weatherGatewayImpl struct {
 	httpClient *http.Client
 }
 
+var _ WeatherGateway = (*weatherGatewayImpl)(nil)
+
 // NewWeatherGateway creates a new instance of WeatherGateway with HTTP client
 func NewWeatherGateway(baseUrl string, clientOptions http.ClientOptions) WeatherGateway {
 	httpClient := http.NewHttpClient(baseUrl, clientOptions)

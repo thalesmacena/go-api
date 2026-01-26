@@ -12,6 +12,8 @@ type QueueHealthGateway struct {
 	mutex   sync.RWMutex
 }
 
+var _ HealthGateway = (*QueueHealthGateway)(nil)
+
 func NewQueueHealthGateway() *QueueHealthGateway {
 	return &QueueHealthGateway{
 		workers: make(map[string]*sqs.Worker),

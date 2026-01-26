@@ -27,7 +27,7 @@ func executeV1(totalUUIDs int) {
 
 	fmt.Println("Executando V1")
 
-	channel := make(chan string, totalUUIDs)
+	channel := make(chan string)
 	go generateUUID(totalUUIDs, channel)
 
 	for v := range channel {
@@ -43,7 +43,7 @@ func executeV2(totalUUIDs, numGoroutines int) {
 
 	fmt.Println("Executando V2")
 
-	channelV2 := make(chan string, totalUUIDs)
+	channelV2 := make(chan string)
 	var wg sync.WaitGroup
 
 	uuidsPerGoroutine := totalUUIDs / numGoroutines

@@ -16,6 +16,8 @@ type shortUrlUseCase struct {
 	gateway db.ShortUrlGateway
 }
 
+var _ UseCase = (*shortUrlUseCase)(nil)
+
 func NewShortUrlUseCase(gateway db.ShortUrlGateway) UseCase {
 	return &shortUrlUseCase{
 		gateway: gateway,
@@ -34,7 +36,7 @@ func (uc *shortUrlUseCase) FindAll(page int, size int) (*model.Page[entity.Short
 	var totalElements int64
 	var shortUrlsErr, countErr error
 
-	done := make(chan bool, 2)
+	done := make(chan bool)
 
 	// Fetch short URLs
 	go func() {
@@ -74,7 +76,7 @@ func (uc *shortUrlUseCase) FindByURLPart(urlPart string, page int, size int) (*m
 	var totalElements int64
 	var shortUrlsErr, countErr error
 
-	done := make(chan bool, 2)
+	done := make(chan bool)
 
 	// Fetch short URLs
 	go func() {

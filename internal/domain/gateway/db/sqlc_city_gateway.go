@@ -18,6 +18,8 @@ type SQLCCityGateway struct {
 	DB *sql.DB
 }
 
+var _ CityGateway = (*SQLCCityGateway)(nil)
+
 func NewSQLCCityGateway(db *sql.DB) *SQLCCityGateway {
 	return &SQLCCityGateway{DB: db}
 }
